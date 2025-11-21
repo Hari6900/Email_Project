@@ -1,0 +1,20 @@
+# Ignore directories named __pycache__ anywhere in the project
+__pycache__/
+**/__pycache__/
+
+# Ignore compiled Python files
+*.py[cod]
+*$py.class
+*.pyc
+
+# Ignore database
+*.sqlite3
+db.sqlite3
+
+# Ignore Virtual Env
+.venv/
+venv/
+env/
+
+# Ignore Environment variables
+.env
