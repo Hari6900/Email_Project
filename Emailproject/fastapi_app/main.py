@@ -16,8 +16,7 @@ from fastapi_app.routers import auth, users, message
 app = FastAPI()
 
 app.include_router(message.router, prefix="/message", tags=["Messages"])
-app.include_router(auth.router, tags=["Authentication"])
-
+app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
 @app.get("/")
 def read_root():
