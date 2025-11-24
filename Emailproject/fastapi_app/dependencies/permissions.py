@@ -1,12 +1,11 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from ..core.security import SECRET_KEY, ALGORITHM
 from django.contrib.auth import get_user_model
+from ..core.config import settings
 
 # This tells FastAPI that the token comes from the "/login" URL
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 def get_current_user(token: str = Depends(oauth2_scheme)):
     """
     The Bouncer:
@@ -23,7 +22,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     
     try:
         # Decode the JWT
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
