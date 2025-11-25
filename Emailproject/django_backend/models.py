@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -49,6 +50,7 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+
 class Email(models.Model):
     sender = models.ForeignKey(User, related_name="sent_emails", on_delete=models.CASCADE)
     receiver = models.ForeignKey(User, related_name="received_emails", on_delete=models.CASCADE)
@@ -56,6 +58,13 @@ class Email(models.Model):
     body = models.TextField()
     parent = models.ForeignKey("self", null=True, blank=True, related_name="replies", on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    is_deleted_by_sender = models.BooleanField(default=False)
+    
+    is_deleted_by_receiver = models.BooleanField(default=False)
+
+    is_important = models.BooleanField(default=False) 
+    is_favorite = models.BooleanField(default=False)  
 
     def __str__(self):
         return f"{self.sender.email} → {self.receiver.email}"

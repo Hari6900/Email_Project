@@ -8,3 +8,7 @@ class EmailCreate(BaseModel):
 class EmailReply(BaseModel):
     email_id: int
     body: str
+    
+class EmailUpdate(BaseModel):
+    is_important: bool | None = None
+    is_favorite: bool | None = None    
