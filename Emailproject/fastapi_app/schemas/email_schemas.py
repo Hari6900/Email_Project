@@ -1,10 +1,10 @@
 from pydantic import BaseModel
 
-class MessageCreate(BaseModel):
+class EmailCreate(BaseModel):
     receiver_email: str
     subject: str
     body: str
 
-class ReplyCreate(BaseModel):
-    message_id: int
+class EmailReply(BaseModel):
+    email_id: int
     body: str
