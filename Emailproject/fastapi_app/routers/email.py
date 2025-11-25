@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from django.contrib.auth import get_user_model
 
-from django_backend.models import Message
-from fastapi_app.schemas.message_schemas import MessageCreate, ReplyCreate
+from django_backend.models import Email
+from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply
 from fastapi_app.dependencies.auth import get_current_user  
 
 router = APIRouter()
@@ -21,11 +21,11 @@ def ensure_stackly_email(email: str):
 
 
 # ----------------------
-# SEND A MESSAGE
+# SEND A EMAIL
 # ----------------------
 @router.post("/send")
-def send_message(
-    data: MessageCreate,
+def send_email(
+    data: EmailCreate,
     current_user: User = Depends(get_current_user)   # <-- FIXED
 ):
 
@@ -39,34 +39,34 @@ def send_message(
     except User.DoesNotExist:
         raise HTTPException(status_code=404, detail="Receiver does not exist")
 
-    # Create message
-    msg = Message.objects.create(
+    # Create email
+    email_obj = Email.objects.create(
         sender=current_user,
         receiver=receiver,
         subject=data.subject,
         body=data.body
     )
 
-    return {"message": "Message sent successfully", "id": msg.id}
+    return {"message": "Email sent successfully", "id": email_obj.id}
 
 
 # ----------------------
-# REPLY TO A MESSAGE
+# REPLY TO A EMAIL
 # ----------------------
 @router.post("/reply")
-def reply_message(
-    data: ReplyCreate,
+def reply_email(
+    data: EmailReply,
     current_user: User = Depends(get_current_user)
 ):
     ensure_stackly_email(current_user.email)
 
     try:
-        parent = Message.objects.get(id=data.message_id)
-    except Message.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Message not found")
+        parent = Email.objects.get(id=data.email_id)
+    except Email.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Email not found")
 
     # Reply goes back to original sender
-    reply = Message.objects.create(
+    reply = Email.objects.create(
         sender=current_user,
         receiver=parent.sender,
         subject=f"Re: {parent.subject}",
@@ -82,7 +82,7 @@ def reply_message(
 # ----------------------
 @router.get("/inbox")
 def inbox(current_user: User = Depends(get_current_user)):
-    msgs = Message.objects.filter(receiver=current_user).order_by("-created_at")
+    msgs = Email.objects.filter(receiver=current_user).order_by("-created_at")
 
     return [
         {
@@ -97,11 +97,11 @@ def inbox(current_user: User = Depends(get_current_user)):
 
 
 # ----------------------
-# SENT MESSAGES
+# SENT EMAILS
 # ----------------------
 @router.get("/sent")
 def sent(current_user: User = Depends(get_current_user)):
-    msgs = Message.objects.filter(sender=current_user).order_by("-created_at")
+    msgs = Email.objects.filter(sender=current_user).order_by("-created_at")
 
     return [
         {
@@ -118,15 +118,15 @@ def sent(current_user: User = Depends(get_current_user)):
 # ----------------------
 # FULL THREAD VIEW
 # ----------------------
-@router.get("/thread/{msg_id}")
-def message_thread(
-    msg_id: int,
+@router.get("/thread/{email_id}")
+def email_thread(
+    email_id: int,
     current_user: User = Depends(get_current_user)
 ):
     try:
-        root = Message.objects.get(id=msg_id)
-    except Message.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Message not found")
+        root = Email.objects.get(id=email_id)
+    except Email.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Email not found")
 
     # Get root + all replies
     thread = [root] + list(root.replies.all())

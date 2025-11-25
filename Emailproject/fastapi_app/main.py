@@ -4,7 +4,7 @@ from .django_setup import setup_django
 setup_django()
 
 
-from fastapi_app.routers import auth, users, message
+from fastapi_app.routers import auth, users, email
 
 
 
@@ -14,8 +14,7 @@ from fastapi_app.routers import auth, users, message
 # from .Routers import auth_router (example)
 
 app = FastAPI()
-
-app.include_router(message.router, prefix="/message", tags=["Messages"])
+app.include_router(email.router, prefix="/email", tags=["Emails"])
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
 @app.get("/")

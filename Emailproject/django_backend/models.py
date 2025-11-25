@@ -49,9 +49,9 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-class Message(models.Model):
-    sender = models.ForeignKey(User, related_name="sent_messages", on_delete=models.CASCADE)
-    receiver = models.ForeignKey(User, related_name="received_messages", on_delete=models.CASCADE)
+class Email(models.Model):
+    sender = models.ForeignKey(User, related_name="sent_emails", on_delete=models.CASCADE)
+    receiver = models.ForeignKey(User, related_name="received_emails", on_delete=models.CASCADE)
     subject = models.CharField(max_length=255)
     body = models.TextField()
     parent = models.ForeignKey("self", null=True, blank=True, related_name="replies", on_delete=models.CASCADE)
