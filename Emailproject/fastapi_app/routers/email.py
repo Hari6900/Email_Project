@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from django.contrib.auth import get_user_model
-
+from typing import List
+from fastapi import File, UploadFile 
+from django.core.files.base import ContentFile 
+from django_backend.models import Email, Attachment 
 from django_backend.models import Email
 from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpdate
 from fastapi_app.dependencies.auth import get_current_user  
@@ -70,6 +73,32 @@ def reply_email(
 
     return {"message": "Reply sent", "id": reply.id}
 
+# UPLOAD ATTACHMENT
+@router.post("/{email_id}/attachments")
+def upload_attachment(
+    email_id: int,
+    file: UploadFile = File(...), 
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        email_obj = Email.objects.get(id=email_id)
+    except Email.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    # Security: Only the Sender can attach files!
+    if current_user != email_obj.sender:
+        raise HTTPException(status_code=403, detail="Only the sender can attach files")
+
+    # Bridge: Read FastAPI file -> Save to Django Model
+    file_content = file.file.read() # Read bytes
+    
+    attachment = Attachment(email=email_obj)
+    # .save(name, content) automatically saves to the 'media' folder
+    attachment.file.save(file.filename, ContentFile(file_content))
+    attachment.save()
+
+    return {"message": "File attached", "filename": file.filename, "url": attachment.file.url}
+
 
 # INBOX
 @router.get("/inbox")
@@ -88,6 +117,7 @@ def inbox(current_user: User = Depends(get_current_user)):
             "date": m.created_at,
             "is_important": m.is_important,
             "is_favorite": m.is_favorite,
+            "attachments": get_attachments(m) 
         }
         for m in msgs
     ]
@@ -108,6 +138,7 @@ def sent(current_user: User = Depends(get_current_user)):
             "subject": m.subject,
             "body": m.body,
             "date": m.created_at,
+            "attachments": get_attachments(m)
         }
         for m in msgs
     ]
@@ -134,6 +165,7 @@ def email_thread(
             "subject": m.subject,
             "body": m.body,
             "date": m.created_at,
+            "attachments": get_attachments(m)
         }
         for m in thread
     ]
@@ -181,3 +213,10 @@ def update_email_flags(
     
     email_obj.save()
     return {"message": "Email updated", "is_important": email_obj.is_important, "is_favorite": email_obj.is_favorite}
+
+def get_attachments(email_obj):
+    # This uses the 'related_name="attachments"' we set in models.py
+    return [
+        {"filename": a.file.name, "url": a.file.url} 
+        for a in email_obj.attachments.all()
+    ]

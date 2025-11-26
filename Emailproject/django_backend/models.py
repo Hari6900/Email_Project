@@ -68,3 +68,16 @@ class Email(models.Model):
 
     def __str__(self):
         return f"{self.sender.email} → {self.receiver.email}"
+
+class Attachment(models.Model):
+    # The Link (Paperclip)
+    email = models.ForeignKey(Email, related_name="attachments", on_delete=models.CASCADE)
+    
+    # The File
+    # 'upload_to' tells Django which subfolder inside 'media' to use
+    file = models.FileField(upload_to='attachments/') 
+    
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Attachment for Email {self.email.id}"
