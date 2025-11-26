@@ -18,3 +18,5 @@ env/
 
 # Ignore Environment variables
 .env
+
+media/
