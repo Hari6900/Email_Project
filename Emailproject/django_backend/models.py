@@ -68,3 +68,11 @@ class Email(models.Model):
 
     def __str__(self):
         return f"{self.sender.email} → {self.receiver.email}"
+    
+class Attachment(models.Model):
+    email = models.ForeignKey(Email, related_name="attachments", on_delete=models.CASCADE)
+    file = models.FileField(upload_to='attachments/') 
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Attachment for Email {self.email.id}"    

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from django.contrib.auth import get_user_model
-
-from django_backend.models import Email
+from typing import Optional
+from django.core.files.base import ContentFile
+from django_backend.models import Email, Attachment
 from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpdate
 from fastapi_app.dependencies.auth import get_current_user  
 
@@ -16,35 +17,53 @@ def ensure_stackly_email(email: str):
             status_code=400,
             detail="Only stackly.com email addresses are allowed"
         )
+        
+def get_attachments(email_obj):
+    return [
+        {"filename": a.file.name, "url": a.file.url} 
+        for a in email_obj.attachments.all()
+    ]        
 
 
 # SEND A EMAIL
 @router.post("/send")
 def send_email(
-    data: EmailCreate,
-    current_user: User = Depends(get_current_user)   # <-- FIXED
+    receiver_email: str = Form(...),
+    subject: str = Form(...),
+    body: str = Form(...),
+    
+    file: Optional[UploadFile] = File(None),
+    
+    current_user: User = Depends(get_current_user)
 ):
-
-    # Validate sender + receiver domains
     ensure_stackly_email(current_user.email)
-    ensure_stackly_email(data.receiver_email)
+    ensure_stackly_email(receiver_email)
 
-    # Validate receiver exists
     try:
-        receiver = User.objects.get(email=data.receiver_email)
+        receiver = User.objects.get(email=receiver_email)
     except User.DoesNotExist:
         raise HTTPException(status_code=404, detail="Receiver does not exist")
 
-    # Create email
     email_obj = Email.objects.create(
         sender=current_user,
         receiver=receiver,
-        subject=data.subject,
-        body=data.body
+        subject=subject,
+        body=body
     )
 
-    return {"message": "Email sent successfully", "id": email_obj.id}
+    file_url = None
+    if file:
+        file_content = file.file.read()
+        attachment = Attachment(email=email_obj)
+        attachment.file.save(file.filename, ContentFile(file_content))
+        attachment.save()
+        file_url = attachment.file.url
 
+    return {
+        "message": "Email sent successfully", 
+        "id": email_obj.id,
+        "attachment": file_url
+    }
 
 # REPLY TO A EMAIL
 @router.post("/reply")
@@ -88,6 +107,7 @@ def inbox(current_user: User = Depends(get_current_user)):
             "date": m.created_at,
             "is_important": m.is_important,
             "is_favorite": m.is_favorite,
+            "attachments": get_attachments(m)
         }
         for m in msgs
     ]
@@ -134,6 +154,7 @@ def email_thread(
             "subject": m.subject,
             "body": m.body,
             "date": m.created_at,
+            "attachments": get_attachments(m)
         }
         for m in thread
     ]
