@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from django.contrib.auth import get_user_model
 from typing import Optional, Union
@@ -97,13 +98,46 @@ def reply_email(
 
 # INBOX
 @router.get("/inbox")
-def inbox(current_user: User = Depends(get_current_user)):
+def inbox(
+    # 1. The "Smart" Search (Subject OR Body)
+    q: Optional[str] = None,
+    
+    # 2. Specific Filters
+    sender: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    
+    current_user: User = Depends(get_current_user)
+):
+    # Start with the base list: My received emails, not deleted, sent status, not archived
     msgs = Email.objects.filter(
         receiver=current_user, 
         is_deleted_by_receiver=False,
         status='SENT',
         is_archived=False 
-    ).order_by("-created_at")
+    )
+
+    # --- APPLY FILTERS ---
+
+    # 1. Keyword Search (The Spotlight)
+    if q:
+        msgs = msgs.filter(
+            Q(subject__icontains=q) | Q(body__icontains=q)
+        )
+
+    # 2. Sender Filter
+    if sender:
+        # We use 'sender__email' to look inside the User object
+        msgs = msgs.filter(sender__email__icontains=sender)
+
+    # 3. Date Range Filter
+    if date_from:
+        msgs = msgs.filter(created_at__date__gte=date_from) # gte = Greater Than or Equal
+    if date_to:
+        msgs = msgs.filter(created_at__date__lte=date_to)   # lte = Less Than or Equal
+
+    # Final Sort
+    msgs = msgs.order_by("-created_at")
 
     return [
         {
@@ -350,7 +384,6 @@ def forward_email(
 # ARCHIVED EMAILS
 @router.get("/archived")
 def archived(current_user: User = Depends(get_current_user)):
-    # Fetch ONLY archived emails
     msgs = Email.objects.filter(
         receiver=current_user, 
         is_deleted_by_receiver=False,
@@ -375,7 +408,6 @@ def archived(current_user: User = Depends(get_current_user)):
 # TRASH (Recycle Bin)
 @router.get("/trash")
 def trash(current_user: User = Depends(get_current_user)):
-    # Logic: Show emails where I am the (Receiver + Deleted) OR (Sender + Deleted)
     msgs = Email.objects.filter(
         Q(receiver=current_user, is_deleted_by_receiver=True) | 
         Q(sender=current_user, is_deleted_by_sender=True)
@@ -404,15 +436,12 @@ def restore_email(email_id: int, current_user: User = Depends(get_current_user))
     except Email.DoesNotExist:
         raise HTTPException(status_code=404, detail="Email not found")
 
-    # Logic: Find out which flag to flip back to False
     restored = False
     
-    # If I am the Sender, restore my copy
     if current_user == email_obj.sender:
         email_obj.is_deleted_by_sender = False
         restored = True
         
-    # If I am the Receiver, restore my copy
     if current_user == email_obj.receiver:
         email_obj.is_deleted_by_receiver = False
         restored = True
