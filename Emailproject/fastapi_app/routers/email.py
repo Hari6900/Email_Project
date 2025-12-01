@@ -4,6 +4,7 @@ from typing import Optional, Union
 from django.utils import timezone
 from django.core.files.base import ContentFile
 from django_backend.models import Email, Attachment
+from django.db.models import Q
 from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpdate, DraftCreate
 from fastapi_app.dependencies.auth import get_current_user  
 
@@ -99,7 +100,9 @@ def reply_email(
 def inbox(current_user: User = Depends(get_current_user)):
     msgs = Email.objects.filter(
         receiver=current_user, 
-        is_deleted_by_receiver=False 
+        is_deleted_by_receiver=False,
+        status='SENT',
+        is_archived=False 
     ).order_by("-created_at")
 
     return [
@@ -111,6 +114,7 @@ def inbox(current_user: User = Depends(get_current_user)):
             "date": m.created_at,
             "is_important": m.is_important,
             "is_favorite": m.is_favorite,
+            "is_archived": m.is_archived,
             "attachments": get_attachments(m)
         }
         for m in msgs
@@ -203,9 +207,11 @@ def update_email_flags(
         email_obj.is_important = data.is_important
     if data.is_favorite is not None:
         email_obj.is_favorite = data.is_favorite
+    if data.is_archived is not None:
+        email_obj.is_archived = data.is_archived    
     
     email_obj.save()
-    return {"message": "Email updated", "is_important": email_obj.is_important, "is_favorite": email_obj.is_favorite}
+    return {"message": "Email updated", "is_important": email_obj.is_important, "is_favorite": email_obj.is_favorite, "is_archived": email_obj.is_archived}
 
 # SAVE DRAFT
 @router.post("/draft")
@@ -340,3 +346,79 @@ def forward_email(
         )
 
     return {"message": "Email forwarded", "id": forwarded_email.id}
+
+# ARCHIVED EMAILS
+@router.get("/archived")
+def archived(current_user: User = Depends(get_current_user)):
+    # Fetch ONLY archived emails
+    msgs = Email.objects.filter(
+        receiver=current_user, 
+        is_deleted_by_receiver=False,
+        is_archived=True 
+    ).order_by("-created_at")
+
+    return [
+        {
+            "id": m.id,
+            "from": m.sender.email,
+            "subject": m.subject,
+            "body": m.body,
+            "date": m.created_at,
+            "is_important": m.is_important,
+            "is_favorite": m.is_favorite,
+            "is_archived": m.is_archived, # Show the flag
+            "attachments": get_attachments(m)
+        }
+        for m in msgs
+    ]
+
+# TRASH (Recycle Bin)
+@router.get("/trash")
+def trash(current_user: User = Depends(get_current_user)):
+    # Logic: Show emails where I am the (Receiver + Deleted) OR (Sender + Deleted)
+    msgs = Email.objects.filter(
+        Q(receiver=current_user, is_deleted_by_receiver=True) | 
+        Q(sender=current_user, is_deleted_by_sender=True)
+    ).order_by("-created_at")
+
+    return [
+        {
+            "id": m.id,
+            "from": m.sender.email,
+            "subject": m.subject,
+            "body": m.body,
+            "date": m.created_at,
+            "is_important": m.is_important,
+            "is_favorite": m.is_favorite,
+            "is_archived": m.is_archived,
+            "attachments": get_attachments(m)
+        }
+        for m in msgs
+    ]
+    
+# RESTORE FROM TRASH
+@router.post("/{email_id}/restore")
+def restore_email(email_id: int, current_user: User = Depends(get_current_user)):
+    try:
+        email_obj = Email.objects.get(id=email_id)
+    except Email.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    # Logic: Find out which flag to flip back to False
+    restored = False
+    
+    # If I am the Sender, restore my copy
+    if current_user == email_obj.sender:
+        email_obj.is_deleted_by_sender = False
+        restored = True
+        
+    # If I am the Receiver, restore my copy
+    if current_user == email_obj.receiver:
+        email_obj.is_deleted_by_receiver = False
+        restored = True
+        
+    if not restored:
+        raise HTTPException(status_code=403, detail="Not authorized to restore this email")
+
+    email_obj.save()
+    return {"message": "Email restored successfully", "id": email_obj.id}    

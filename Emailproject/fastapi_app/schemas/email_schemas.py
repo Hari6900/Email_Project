@@ -11,7 +11,8 @@ class EmailReply(BaseModel):
     
 class EmailUpdate(BaseModel):
     is_important: bool | None = None
-    is_favorite: bool | None = None    
+    is_favorite: bool | None = None  
+    is_archived: bool | None = None  
 
 class DraftCreate(BaseModel):
     # Everything is optional in a draft!
