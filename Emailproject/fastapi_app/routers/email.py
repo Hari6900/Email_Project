@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from django.contrib.auth import get_user_model
-from typing import Optional
+from typing import Optional, Union
+from django.utils import timezone
 from django.core.files.base import ContentFile
 from django_backend.models import Email, Attachment
-from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpdate
+from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpdate, DraftCreate
 from fastapi_app.dependencies.auth import get_current_user  
 
 router = APIRouter()
@@ -32,10 +33,12 @@ def send_email(
     subject: str = Form(...),
     body: str = Form(...),
     
-    file: Optional[UploadFile] = File(None),
+    file: Union[UploadFile, str, None] = File(None),
     
     current_user: User = Depends(get_current_user)
-):
+):  
+    if isinstance(file, str):
+        file = None
     ensure_stackly_email(current_user.email)
     ensure_stackly_email(receiver_email)
 
@@ -52,12 +55,13 @@ def send_email(
     )
 
     file_url = None
-    if file:
+    if file and file.filename:
         file_content = file.file.read()
-        attachment = Attachment(email=email_obj)
-        attachment.file.save(file.filename, ContentFile(file_content))
-        attachment.save()
-        file_url = attachment.file.url
+        if len(file_content) > 0:
+            attachment = Attachment(email=email_obj)
+            attachment.file.save(file.filename, ContentFile(file_content))
+            attachment.save()
+            file_url = attachment.file.url
 
     return {
         "message": "Email sent successfully", 
@@ -78,7 +82,7 @@ def reply_email(
     except Email.DoesNotExist:
         raise HTTPException(status_code=404, detail="Email not found")
 
-    # Reply goes back to original sender
+    
     reply = Email.objects.create(
         sender=current_user,
         receiver=parent.sender,
@@ -167,7 +171,7 @@ def delete_email(email_id: int, current_user: User = Depends(get_current_user)):
     except Email.DoesNotExist:
         raise HTTPException(status_code=404, detail="Email not found")
 
-    # Logic: Mark as deleted based on who the user is
+    
     if current_user == email_obj.sender:
         email_obj.is_deleted_by_sender = True
     elif current_user == email_obj.receiver:
@@ -190,11 +194,11 @@ def update_email_flags(
     except Email.DoesNotExist:
         raise HTTPException(status_code=404, detail="Email not found")
 
-    # Logic: Only the RECEIVER can flag emails in their inbox
+    
     if current_user != email_obj.receiver:
         raise HTTPException(status_code=403, detail="You can only flag emails in your inbox")
 
-    # Update fields if provided
+    
     if data.is_important is not None:
         email_obj.is_important = data.is_important
     if data.is_favorite is not None:
@@ -202,3 +206,137 @@ def update_email_flags(
     
     email_obj.save()
     return {"message": "Email updated", "is_important": email_obj.is_important, "is_favorite": email_obj.is_favorite}
+
+# SAVE DRAFT
+@router.post("/draft")
+def save_draft(
+    data: DraftCreate,
+    current_user: User = Depends(get_current_user)
+):
+    ensure_stackly_email(current_user.email)
+    
+    receiver = None
+    if data.receiver_email:
+        ensure_stackly_email(data.receiver_email)
+        try:
+            receiver = User.objects.get(email=data.receiver_email)
+        except User.DoesNotExist:
+            raise HTTPException(status_code=404, detail="Receiver not found")
+
+    # 2. Create the Draft
+    draft = Email.objects.create(
+        sender=current_user,
+        receiver=receiver,
+        subject=data.subject or "(No Subject)",
+        body=data.body or "",
+        status='DRAFT' 
+    )
+
+    return {"message": "Draft saved", "id": draft.id, "status": "DRAFT"}
+
+# PUBLISH DRAFT (Send it)
+@router.post("/{email_id}/publish")
+def publish_draft(
+    email_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        email_obj = Email.objects.get(id=email_id)
+    except Email.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    
+    if email_obj.sender != current_user:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if email_obj.status != 'DRAFT':
+        raise HTTPException(status_code=400, detail="This email is already sent")
+    if not email_obj.receiver:
+         raise HTTPException(status_code=400, detail="Cannot send email without a receiver")
+
+    
+    email_obj.status = 'SENT'
+    email_obj.created_at = timezone.now() 
+    email_obj.save()
+
+    return {"message": "Email sent successfully", "id": email_obj.id, "status": "SENT"}
+
+# EDIT DRAFT
+@router.patch("/draft/{email_id}")
+def edit_draft(
+    email_id: int,
+    data: DraftCreate,  
+    current_user: User = Depends(get_current_user)
+):
+    
+    try:
+        email_obj = Email.objects.get(id=email_id)
+    except Email.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    if email_obj.sender != current_user:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this draft")
+
+    if email_obj.status != 'DRAFT':
+        raise HTTPException(status_code=400, detail="Cannot edit an email that has already been sent")
+
+    if data.receiver_email is not None:
+        if data.receiver_email == "":
+            email_obj.receiver = None
+        else:
+            ensure_stackly_email(data.receiver_email)
+            try:
+                email_obj.receiver = User.objects.get(email=data.receiver_email)
+            except User.DoesNotExist:
+                 raise HTTPException(status_code=404, detail="Receiver not found")
+    
+    if data.subject is not None:
+        email_obj.subject = data.subject
+    
+    if data.body is not None:
+        email_obj.body = data.body
+
+    email_obj.save()
+    
+    return {
+        "message": "Draft updated", 
+        "id": email_obj.id, 
+        "subject": email_obj.subject,
+        "receiver": email_obj.receiver.email if email_obj.receiver else None
+    }
+
+# FORWARD EMAIL
+@router.post("/{email_id}/forward")
+def forward_email(
+    email_id: int,
+    new_receiver_email: str = Form(...), 
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        original = Email.objects.get(id=email_id)
+    except Email.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Original email not found")
+
+    ensure_stackly_email(new_receiver_email)
+    try:
+        new_receiver = User.objects.get(email=new_receiver_email)
+    except User.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Receiver does not exist")
+
+    new_subject = f"Fwd: {original.subject}"
+    new_body = f"\n\n---------- Forwarded message ----------\nFrom: {original.sender.email}\nDate: {original.created_at}\n\n{original.body}"
+
+    forwarded_email = Email.objects.create(
+        sender=current_user,
+        receiver=new_receiver,
+        subject=new_subject,
+        body=new_body,
+        status='SENT'
+    )
+    
+    for attachment in original.attachments.all():
+        Attachment.objects.create(
+            email=forwarded_email,
+            file=attachment.file 
+        )
+
+    return {"message": "Email forwarded", "id": forwarded_email.id}
