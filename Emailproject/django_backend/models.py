@@ -66,7 +66,7 @@ class Email(models.Model):
 
     is_important = models.BooleanField(default=False) 
     is_favorite = models.BooleanField(default=False)  
-    
+    is_archived = models.BooleanField(default=False)
     STATUS_CHOICES = (
         ('DRAFT', 'Draft'),
         ('SENT', 'Sent')
