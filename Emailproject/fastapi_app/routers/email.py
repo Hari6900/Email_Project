@@ -422,6 +422,29 @@ def starred(current_user: User = Depends(get_current_user)):
         }
         for m in msgs
     ]      
+    
+  # IMPORTANT EMAILS
+@router.get("/important")
+def important(current_user: User = Depends(get_current_user)):
+    msgs = Email.objects.filter(
+        Q(receiver=current_user, is_deleted_by_receiver=False, is_important=True) |
+        Q(sender=current_user, is_deleted_by_sender=False, is_important=True)
+    ).order_by("-created_at")
+
+    return [
+        {
+            "id": m.id,
+            "from": m.sender.email,
+            "subject": m.subject,
+            "body": m.body,
+            "date": m.created_at,
+            "is_important": m.is_important,
+            "is_favorite": m.is_favorite,
+            "is_archived": m.is_archived,
+            "attachments": get_attachments(m)
+        }
+        for m in msgs
+    ]    
 
 # TRASH (Recycle Bin)
 @router.get("/trash")
