@@ -99,17 +99,15 @@ def reply_email(
 # INBOX
 @router.get("/inbox")
 def inbox(
-    # 1. The "Smart" Search (Subject OR Body)
     q: Optional[str] = None,
     
-    # 2. Specific Filters
     sender: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     
     current_user: User = Depends(get_current_user)
 ):
-    # Start with the base list: My received emails, not deleted, sent status, not archived
+    
     msgs = Email.objects.filter(
         receiver=current_user, 
         is_deleted_by_receiver=False,
@@ -118,23 +116,19 @@ def inbox(
     )
 
     # --- APPLY FILTERS ---
-
-    # 1. Keyword Search (The Spotlight)
     if q:
         msgs = msgs.filter(
             Q(subject__icontains=q) | Q(body__icontains=q)
         )
 
-    # 2. Sender Filter
+    
     if sender:
-        # We use 'sender__email' to look inside the User object
         msgs = msgs.filter(sender__email__icontains=sender)
 
-    # 3. Date Range Filter
     if date_from:
-        msgs = msgs.filter(created_at__date__gte=date_from) # gte = Greater Than or Equal
+        msgs = msgs.filter(created_at__date__gte=date_from) 
     if date_to:
-        msgs = msgs.filter(created_at__date__lte=date_to)   # lte = Less Than or Equal
+        msgs = msgs.filter(created_at__date__lte=date_to)   
 
     # Final Sort
     msgs = msgs.order_by("-created_at")
@@ -399,11 +393,35 @@ def archived(current_user: User = Depends(get_current_user)):
             "date": m.created_at,
             "is_important": m.is_important,
             "is_favorite": m.is_favorite,
-            "is_archived": m.is_archived, # Show the flag
+            "is_archived": m.is_archived, 
             "attachments": get_attachments(m)
         }
         for m in msgs
     ]
+    
+  # STARRED (Favorites)
+@router.get("/starred")
+def starred(current_user: User = Depends(get_current_user)):
+    
+    msgs = Email.objects.filter(
+        Q(receiver=current_user, is_deleted_by_receiver=False, is_favorite=True) |
+        Q(sender=current_user, is_deleted_by_sender=False, is_favorite=True)
+    ).order_by("-created_at")
+
+    return [
+        {
+            "id": m.id,
+            "from": m.sender.email,
+            "subject": m.subject,
+            "body": m.body,
+            "date": m.created_at,
+            "is_important": m.is_important,
+            "is_favorite": m.is_favorite,
+            "is_archived": m.is_archived,
+            "attachments": get_attachments(m)
+        }
+        for m in msgs
+    ]      
 
 # TRASH (Recycle Bin)
 @router.get("/trash")
