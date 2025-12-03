@@ -1,17 +1,7 @@
 from fastapi import FastAPI
 from .django_setup import setup_django
-
 setup_django()
-
-
 from fastapi_app.routers import auth, users, email
-
-
-
-# 1. Run the setup first!
-
-# 2. Now you can import things that use the DB
-# from .Routers import auth_router (example)
 
 app = FastAPI()
 app.include_router(email.router, prefix="/email", tags=["Emails"])

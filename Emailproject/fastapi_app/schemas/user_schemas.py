@@ -1,7 +1,7 @@
 import re
 import requests
 import hashlib
-from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo
+from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo, Field
 
 class UserLogin(BaseModel):
     username: str 
@@ -14,6 +14,10 @@ class Token(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
+    first_name: str = Field(..., min_length=1)
+    last_name: str
+    gender: str | None = None      
+    nationality: str | None = None
     
     @field_validator('password')
     def validate_password_strength(cls, v):
@@ -46,8 +50,10 @@ class UserCreate(BaseModel):
 class UserRead(BaseModel):
     id: int
     email: EmailStr
-    first_name: str | None = None
+    first_name: str 
     last_name: str | None = None
+    gender: str | None = None
+    nationality: str | None = None
     role: str
     is_active: bool
 
@@ -56,4 +62,6 @@ class UserRead(BaseModel):
         
 class UserUpdate(BaseModel):
     first_name: str | None = None
-    last_name: str | None = None        
+    last_name: str | None = None    
+    gender: str | None = None      
+    nationality: str | None = None    
