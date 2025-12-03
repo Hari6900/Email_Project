@@ -14,13 +14,12 @@ def create_user(user_in: UserCreate):
     Create a new user.
     """
     User = get_user_model()
-    # Restrict domain: Only stackly.com emails allowed
     if not user_in.email.lower().endswith("@stackly.com"):
         raise HTTPException(
             status_code=400,
             detail="Only stackly.com domain email is allowed"
         )
-    # 1. Check if email already exists
+    
     if User.objects.filter(email=user_in.email).exists():
         raise HTTPException(
             status_code=400,
@@ -28,13 +27,16 @@ def create_user(user_in: UserCreate):
         )
 
     # 2. Create the user (Hash the password!)
-    # We use our 'get_password_hash' tool from security.py
     user = User(
         email=user_in.email,
-        role="STAFF", # Default role for new signups
+        first_name=user_in.first_name,   
+        last_name=user_in.last_name,     
+        gender=user_in.gender,           
+        nationality=user_in.nationality,
+        role="STAFF", 
         is_active=True
     )
-    user.set_password(user_in.password) # Django's built-in password setter handles hashing too, but explicit hashing is safer in API
+    user.set_password(user_in.password) 
     user.save()
 
     return user
@@ -86,13 +88,11 @@ def update_user_me(
     current_user = Depends(get_current_active_user)
 ):
     """
-    Update my own first/last name.
+    Update my own profile details.
     """
-    # Update fields if they are provided
-    if user_update.first_name is not None:
-        current_user.first_name = user_update.first_name
-    if user_update.last_name is not None:
-        current_user.last_name = user_update.last_name
+    update_data = user_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(current_user, key, value)
     
     current_user.save()
     return current_user
