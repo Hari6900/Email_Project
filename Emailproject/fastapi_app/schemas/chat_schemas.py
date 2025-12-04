@@ -28,3 +28,6 @@ class ChatRoomCreate(BaseModel):
     participant_emails: List[str]
     name: str | None = None 
     is_group: bool = False
+    
+class ChatMemberUpdate(BaseModel):
+    user_emails: List[str]    

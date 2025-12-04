@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile
+import secrets
 from django.core.files.base import ContentFile
 from typing import List
 from django.contrib.auth import get_user_model
 from asgiref.sync import sync_to_async
 
 from django_backend.models import ChatRoom, ChatMessage
-from fastapi_app.schemas.chat_schemas import ChatRoomCreate, ChatRoomRead, MessageRead
+from fastapi_app.schemas.chat_schemas import ChatRoomCreate, ChatRoomRead, MessageRead, ChatMemberUpdate
 from fastapi_app.core.socket_manager import manager
 from fastapi_app.dependencies.auth import get_current_user
 
@@ -158,3 +159,96 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
             
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id, user_id)
+        
+   # GROUP MANAGEMENT
+@router.post("/rooms/{room_id}/members")
+def add_members(
+    room_id: int,
+    data: ChatMemberUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        room = ChatRoom.objects.get(id=room_id)
+    except ChatRoom.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    if current_user not in room.participants.all():
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    added_users = []
+    for email in data.user_emails:
+        try:
+            u = User.objects.get(email=email)
+            if u not in room.participants.all():
+                room.participants.add(u)
+                added_users.append(u.email)
+        except User.DoesNotExist:
+            continue
+
+    return {"message": "Members added", "added": added_users}
+
+@router.post("/rooms/{room_id}/leave")
+def leave_room(
+    room_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        room = ChatRoom.objects.get(id=room_id)
+    except ChatRoom.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    if current_user in room.participants.all():
+        room.participants.remove(current_user)
+        
+    return {"message": "You have left the group"}     
+
+ # START CALL (Huddle) 
+@router.post("/rooms/{room_id}/call")
+async def start_call(
+    room_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    @sync_to_async
+    def get_room_and_check_access():
+        try:
+            r = ChatRoom.objects.get(id=room_id)
+            if current_user not in r.participants.all():
+                raise PermissionError("Not a participant")
+            return r
+        except ChatRoom.DoesNotExist:
+            return None
+
+    try:
+        room = await get_room_and_check_access()
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Not a participant")
+        
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    code = secrets.token_urlsafe(8)
+    join_url = f"https://meet.jit.si/Stackly-Chat-{code}"
+
+    @sync_to_async
+    def create_call_message():
+        msg = ChatMessage.objects.create(
+            room=room,
+            sender=current_user,
+            content=f"📞 started a call. Click to join: {join_url}"
+        )
+        return msg
+
+    msg_obj = await create_call_message()
+
+    socket_message = {
+        "id": msg_obj.id,
+        "sender": current_user.email,
+        "content": msg_obj.content,
+        "type": "CALL", 
+        "link": join_url,
+        "timestamp": str(msg_obj.timestamp)
+    }
+    
+    await manager.broadcast(socket_message, room_id)
+
+    return {"message": "Call started", "link": join_url}
