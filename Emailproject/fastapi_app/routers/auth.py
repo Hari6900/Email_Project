@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 
-from ..core.security import verify_password, create_access_token
+from ..core.security import (verify_password, create_access_token, 
+create_password_reset_token, decode_access_token)
 from ..core.config import settings
-from ..schemas.user_schemas import Token
+from ..schemas.user_schemas import Token, ForgotPasswordRequest, ResetPasswordRequest
 
 from django.contrib.auth import get_user_model
-
+User = get_user_model()
 router = APIRouter()
 
 
@@ -49,3 +50,51 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+# 1. FORGOT PASSWORD (Request Link)
+@router.post("/forgot-password", status_code=200)
+def forgot_password(data: ForgotPasswordRequest):
+    """
+    Generates a password reset link.
+    """
+    user = User.objects.filter(email=data.email).first()
+
+    if not user:
+        return {"message": "If this email exists, a reset link has been sent."}
+
+    reset_token = create_password_reset_token(user.email)
+
+    print("\n==========================================")
+    print(f" PASSWORD RESET EMAIL FOR: {user.email}")
+    print(f" LINK: {reset_token}")
+    print("==========================================\n")
+
+    return {"message": "If this email exists, a reset link has been sent."}
+
+# 2. RESET PASSWORD (Perform Action)
+@router.post("/reset-password", status_code=200)
+def reset_password(data: ResetPasswordRequest):
+    """
+    Verifies the token and updates the password.
+    """
+    payload = decode_access_token(data.token)
+    
+    if not payload:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    
+    if payload.get("type") != "reset":
+        raise HTTPException(status_code=400, detail="Invalid token type")
+
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid token payload")
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.set_password(data.new_password)
+    user.save()
+
+    return {"message": "Password reset successfully. You can now login with your new password."}
