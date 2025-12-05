@@ -65,3 +65,16 @@ class UserUpdate(BaseModel):
     last_name: str | None = None    
     gender: str | None = None      
     nationality: str | None = None    
+    
+# 1. The Request (Step 1)
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+# 2. The Reset (Step 2)
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+    
+    @field_validator('new_password')
+    def validate_password_strength(cls, v):
+        return UserCreate.validate_password_strength(v)    
