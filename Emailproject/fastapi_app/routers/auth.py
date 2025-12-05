@@ -1,23 +1,73 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from datetime import timedelta
+from asgiref.sync import sync_to_async
 
-from ..core.security import (verify_password, create_access_token, 
-create_password_reset_token, decode_access_token)
+from ..core.security import (
+    verify_password, create_access_token,
+    create_password_reset_token, decode_access_token
+)
 from ..core.config import settings
 from ..schemas.user_schemas import Token, ForgotPasswordRequest, ResetPasswordRequest
 
 from django.contrib.auth import get_user_model
 User = get_user_model()
+
 router = APIRouter()
 
+# OAuth2 token extractor for protected routes
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+
+# ============================================================
+# NEW: get_current_user (required for Task creation)
+# ============================================================
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    """
+    Extracts the logged-in user from the JWT access token.
+    Used in authenticated endpoints like:
+    - create task
+    - create chat room
+    - send messages
+    """
+
+    # Decode token
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    # Get user from Django ORM
+    user = await sync_to_async(User.objects.filter(email=email).first)()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    return user
+
+
+# ============================================================
+# LOGIN
+# ============================================================
 @router.post("/login", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     User = get_user_model()
     email = form_data.username
 
-    #  1. Email domain validation (only stackly.com allowed)
+    # 1. Email domain validation (only stackly.com allowed)
     if not email.endswith("@stackly.com"):
         raise HTTPException(
             status_code=400,
@@ -51,12 +101,12 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-# 1. FORGOT PASSWORD (Request Link)
+
+# ============================================================
+# FORGOT PASSWORD
+# ============================================================
 @router.post("/forgot-password", status_code=200)
 def forgot_password(data: ForgotPasswordRequest):
-    """
-    Generates a password reset link.
-    """
     user = User.objects.filter(email=data.email).first()
 
     if not user:
@@ -71,12 +121,12 @@ def forgot_password(data: ForgotPasswordRequest):
 
     return {"message": "If this email exists, a reset link has been sent."}
 
-# 2. RESET PASSWORD (Perform Action)
+
+# ============================================================
+# RESET PASSWORD
+# ============================================================
 @router.post("/reset-password", status_code=200)
 def reset_password(data: ResetPasswordRequest):
-    """
-    Verifies the token and updates the password.
-    """
     payload = decode_access_token(data.token)
     
     if not payload:
