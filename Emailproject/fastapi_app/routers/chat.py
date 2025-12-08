@@ -48,8 +48,52 @@ def get_messages(room_id: int, current_user: User = Depends(get_current_user)):
     except ChatRoom.DoesNotExist:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    msgs = room.messages.all().order_by("timestamp")
+    msgs = room.messages.filter(is_deleted=False).order_by("timestamp")
     
+    results = []
+    for m in msgs:
+        url = None
+        if m.attachment:
+            try:
+                url = m.attachment.url
+            except ValueError:
+                url = None  
+
+        results.append({
+            "id": m.id,
+            "sender_email": m.sender.email,
+            "content": m.content,
+            "attachment_url": url,
+            "timestamp": m.timestamp,
+            "read_count": m.read_by.count(),
+            "is_starred": m.starred_by.filter(id=current_user.id).exists()
+        })
+
+    return results
+# DELETE MESSAGE (Soft Delete)
+@router.delete("/messages/{message_id}", status_code=204)
+def delete_message(message_id: int, current_user: User = Depends(get_current_user)):
+    try:
+        msg = ChatMessage.objects.get(id=message_id)
+    except ChatMessage.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if msg.sender != current_user:
+        raise HTTPException(status_code=403, detail="You can only delete your own messages")
+
+    msg.is_deleted = True
+    msg.save()
+    
+    return None
+
+# CHAT TRASH (Recycle Bin)
+@router.get("/trash", response_model=List[MessageRead])
+def chat_trash(current_user: User = Depends(get_current_user)):
+    msgs = ChatMessage.objects.filter(
+        sender=current_user, 
+        is_deleted=True
+    ).order_by("-timestamp")
+
     return [
         {
             "id": m.id,
