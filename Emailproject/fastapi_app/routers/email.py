@@ -1,13 +1,16 @@
 from datetime import date
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from django.contrib.auth import get_user_model
 from typing import Optional, Union
 from django.utils import timezone
 from django.core.files.base import ContentFile
-from django_backend.models import Email, Attachment
+from django_backend.models import Email, User, Attachment
 from django.db.models import Q
 from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpdate, DraftCreate
-from fastapi_app.dependencies.auth import get_current_user  
+from fastapi_app.dependencies.auth import get_current_user 
+from asgiref.sync import sync_to_async 
+from fastapi_app.schemas.email_schemas import EmailRead
 
 router = APIRouter()
 User = get_user_model()
@@ -492,3 +495,37 @@ def restore_email(email_id: int, current_user: User = Depends(get_current_user))
 
     email_obj.save()
     return {"message": "Email restored successfully", "id": email_obj.id}    
+
+@router.patch("/{email_id}/spam", response_model=EmailRead)
+async def mark_email_as_spam(
+    email_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    # Only allow marking emails that belong to the logged-in user
+    email = await sync_to_async(
+        Email.objects.filter(id=email_id, receiver=current_user).first
+    )()
+
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Email not found",
+        )
+
+    email.is_spam = True
+    await sync_to_async(email.save)()
+
+    return email
+
+@router.get("/spam", response_model=List[EmailRead])
+async def list_spam_emails(current_user: User = Depends(get_current_user)):
+    emails = await sync_to_async(list)(
+        Email.objects.filter(
+            receiver=current_user,
+            is_spam=True,
+            is_deleted_by_receiver=False,
+        ).order_by("-created_at")
+    )
+    return emails
+
+                                             
