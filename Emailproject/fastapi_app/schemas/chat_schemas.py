@@ -8,8 +8,8 @@ class MessageRead(BaseModel):
     content: str | None
     attachment_url: str | None = None
     timestamp: datetime
-    
     read_count: int = 0 
+    is_starred: bool = False
 
     class Config:
         from_attributes = True

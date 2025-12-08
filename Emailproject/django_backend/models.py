@@ -120,7 +120,7 @@ class ChatMessage(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
 
     read_by = models.ManyToManyField(User, related_name="read_messages", blank=True)
-
+    starred_by = models.ManyToManyField(User, related_name="starred_chat_messages", blank=True)
     def __str__(self):
         return f"{self.sender.email}: {self.content[:20]}"    
 
