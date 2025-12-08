@@ -213,6 +213,52 @@ async def upload_chat_attachment(
 
     return {"message": "File uploaded", "url": msg_obj.attachment.url}
 
+# SEND TEXT MESSAGE (REST API - For Testing)
+from pydantic import BaseModel
+
+class TextMessageCreate(BaseModel):
+    content: str
+
+@router.post("/rooms/{room_id}/message")
+async def send_text_message(
+    room_id: int,
+    data: TextMessageCreate,
+    current_user: User = Depends(get_current_user)
+):
+    @sync_to_async
+    def save_text_message():
+        try:
+            room = ChatRoom.objects.get(id=room_id)
+            if current_user not in room.participants.all():
+                raise PermissionError("Not a participant")
+            
+            msg = ChatMessage.objects.create(
+                room=room,
+                sender=current_user,
+                content=data.content
+            )
+            return msg
+        except ChatRoom.DoesNotExist:
+            return None
+
+    try:
+        msg_obj = await save_text_message()
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Not a participant")
+        
+    if not msg_obj:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    socket_message = {
+        "id": msg_obj.id,
+        "sender": current_user.email,
+        "content": msg_obj.content,
+        "timestamp": str(msg_obj.timestamp)
+    }
+    await manager.broadcast(socket_message, room_id)
+
+    return {"message": "Message sent", "id": msg_obj.id}
+
 # WEBSOCKET (The Live Line)
 @router.websocket("/ws/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
