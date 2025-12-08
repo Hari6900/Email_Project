@@ -41,7 +41,6 @@ def list_rooms(current_user: User = Depends(get_current_user)):
 
 @router.get("/rooms/{room_id}/messages", response_model=List[MessageRead])
 def get_messages(room_id: int, current_user: User = Depends(get_current_user)):
-    
     try:
         room = ChatRoom.objects.get(id=room_id)
         if current_user not in room.participants.all():
@@ -58,10 +57,31 @@ def get_messages(room_id: int, current_user: User = Depends(get_current_user)):
             "content": m.content,
             "attachment_url": m.attachment.url if m.attachment else None,
             "timestamp": m.timestamp,
-            "read_count": m.read_by.count()
+            "read_count": m.read_by.count(),
+            "is_starred": m.starred_by.filter(id=current_user.id).exists()
         }
         for m in msgs
     ]
+
+# STAR MESSAGE (Toggle)
+@router.post("/messages/{message_id}/star")
+def star_message(message_id: int, current_user: User = Depends(get_current_user)):
+    try:
+        msg = ChatMessage.objects.get(id=message_id)
+    except ChatMessage.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if current_user not in msg.room.participants.all():
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if msg.starred_by.filter(id=current_user.id).exists():
+        msg.starred_by.remove(current_user)
+        is_starred = False
+    else:
+        msg.starred_by.add(current_user)
+        is_starred = True
+
+    return {"message": "Star updated", "is_starred": is_starred}
 
 def format_room_response(room):
     
@@ -83,6 +103,23 @@ def format_room_response(room):
         "last_message": last_msg
     }
 
+# LIST MY STARRED MESSAGES
+@router.get("/starred", response_model=List[MessageRead])
+def get_my_starred_messages(current_user: User = Depends(get_current_user)):
+    msgs = current_user.starred_chat_messages.all().order_by("-timestamp")
+    return [
+        {
+            "id": m.id,
+            "sender_email": m.sender.email,
+            "content": m.content,
+            "attachment_url": m.attachment.url if m.attachment else None,
+            "timestamp": m.timestamp,
+            "read_count": m.read_by.count(),
+            "is_starred": True 
+        }
+        for m in msgs
+    ]
+    
 # FILE UPLOAD 
 @router.post("/rooms/{room_id}/upload")
 async def upload_chat_attachment(
