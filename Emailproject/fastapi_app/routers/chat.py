@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile
+import re
 import secrets
 from django.core.files.base import ContentFile
 from typing import List
@@ -213,6 +214,53 @@ async def upload_chat_attachment(
 
     return {"message": "File uploaded", "url": msg_obj.attachment.url}
 
+# SEND TEXT MESSAGE (REST API - For Testing)
+from pydantic import BaseModel
+
+class TextMessageCreate(BaseModel):
+    content: str
+
+@router.post("/rooms/{room_id}/message")
+async def send_text_message(
+    room_id: int,
+    data: TextMessageCreate,
+    current_user: User = Depends(get_current_user)
+):
+    @sync_to_async
+    def save_text_message():
+        try:
+            room = ChatRoom.objects.get(id=room_id)
+            if current_user not in room.participants.all():
+                raise PermissionError("Not a participant")
+            
+            msg = ChatMessage.objects.create(
+                room=room,
+                sender=current_user,
+                content=data.content
+            )
+            process_mentions(msg)
+            return msg
+        except ChatRoom.DoesNotExist:
+            return None
+
+    try:
+        msg_obj = await save_text_message()
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Not a participant")
+        
+    if not msg_obj:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    socket_message = {
+        "id": msg_obj.id,
+        "sender": current_user.email,
+        "content": msg_obj.content,
+        "timestamp": str(msg_obj.timestamp)
+    }
+    await manager.broadcast(socket_message, room_id)
+
+    return {"message": "Message sent", "id": msg_obj.id}
+
 # WEBSOCKET (The Live Line)
 @router.websocket("/ws/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
@@ -223,6 +271,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
         room = ChatRoom.objects.get(id=room_id)
         sender = User.objects.get(id=user_id)
         msg = ChatMessage.objects.create(room=room, sender=sender, content=content)
+        process_mentions(msg)
         return msg, sender.email
 
     try:
@@ -333,3 +382,46 @@ async def start_call(
     await manager.broadcast(socket_message, room_id)
 
     return {"message": "Call started", "link": join_url}
+
+# Helper Function: Auto-Tag Users
+def process_mentions(message_obj):
+    """
+    Scans content for @Firstname and tags the user.
+    """
+    if not message_obj.content:
+        return
+
+    potential_names = re.findall(r"@(\w+)", message_obj.content)
+
+    for name in potential_names:
+        users = User.objects.filter(first_name__iexact=name)
+        for u in users:
+            message_obj.mentions.add(u)
+            
+# GET MY MENTIONS
+@router.get("/mentions", response_model=List[MessageRead])
+def get_my_mentions(current_user: User = Depends(get_current_user)):
+    """
+    Returns all messages where the current user was tagged (@Name).
+    """
+    msgs = current_user.mentioned_in_messages.filter(is_deleted=False).order_by("-timestamp")
+    
+    results = []
+    for m in msgs:
+        url = None
+        if m.attachment:
+            try:
+                url = m.attachment.url
+            except ValueError:
+                pass
+
+        results.append({
+            "id": m.id,
+            "sender_email": m.sender.email,
+            "content": m.content,
+            "attachment_url": url,
+            "timestamp": m.timestamp,
+            "read_count": m.read_by.count(),
+            "is_starred": m.starred_by.filter(id=current_user.id).exists()
+        })
+    return results            

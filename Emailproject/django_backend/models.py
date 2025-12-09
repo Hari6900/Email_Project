@@ -123,6 +123,7 @@ class ChatMessage(models.Model):
     read_by = models.ManyToManyField(User, related_name="read_messages", blank=True)
     starred_by = models.ManyToManyField(User, related_name="starred_chat_messages", blank=True)
     is_deleted = models.BooleanField(default=False)
+    mentions = models.ManyToManyField(User, related_name="mentioned_in_messages", blank=True)
     def __str__(self):
         return f"{self.sender.email}: {self.content[:20]}"    
 
