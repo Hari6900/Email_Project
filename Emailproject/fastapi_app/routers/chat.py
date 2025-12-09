@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile
+import re
 import secrets
 from django.core.files.base import ContentFile
 from typing import List
@@ -237,6 +238,7 @@ async def send_text_message(
                 sender=current_user,
                 content=data.content
             )
+            process_mentions(msg)
             return msg
         except ChatRoom.DoesNotExist:
             return None
@@ -269,6 +271,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
         room = ChatRoom.objects.get(id=room_id)
         sender = User.objects.get(id=user_id)
         msg = ChatMessage.objects.create(room=room, sender=sender, content=content)
+        process_mentions(msg)
         return msg, sender.email
 
     try:
@@ -379,3 +382,46 @@ async def start_call(
     await manager.broadcast(socket_message, room_id)
 
     return {"message": "Call started", "link": join_url}
+
+# Helper Function: Auto-Tag Users
+def process_mentions(message_obj):
+    """
+    Scans content for @Firstname and tags the user.
+    """
+    if not message_obj.content:
+        return
+
+    potential_names = re.findall(r"@(\w+)", message_obj.content)
+
+    for name in potential_names:
+        users = User.objects.filter(first_name__iexact=name)
+        for u in users:
+            message_obj.mentions.add(u)
+            
+# GET MY MENTIONS
+@router.get("/mentions", response_model=List[MessageRead])
+def get_my_mentions(current_user: User = Depends(get_current_user)):
+    """
+    Returns all messages where the current user was tagged (@Name).
+    """
+    msgs = current_user.mentioned_in_messages.filter(is_deleted=False).order_by("-timestamp")
+    
+    results = []
+    for m in msgs:
+        url = None
+        if m.attachment:
+            try:
+                url = m.attachment.url
+            except ValueError:
+                pass
+
+        results.append({
+            "id": m.id,
+            "sender_email": m.sender.email,
+            "content": m.content,
+            "attachment_url": url,
+            "timestamp": m.timestamp,
+            "read_count": m.read_by.count(),
+            "is_starred": m.starred_by.filter(id=current_user.id).exists()
+        })
+    return results            
