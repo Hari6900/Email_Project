@@ -11,7 +11,6 @@ class EmailReply(BaseModel):
     email_id: int
     body: str
 
-
 class EmailUpdate(BaseModel):
     is_important: bool | None = None
     is_favorite: bool | None = None
@@ -39,3 +38,4 @@ class EmailRead(BaseModel):
 
     class Config:
         from_attributes = True
+

@@ -145,3 +145,20 @@ class Task(models.Model):
 
     def __str__(self):
         return self.title
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+
+    full_name = models.CharField(max_length=150)
+    display_name = models.CharField(max_length=100)
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    date_of_birth = models.DateField(blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+
+    language = models.CharField(max_length=30, default="English")
+    date_format = models.CharField(max_length=20, default="DD-MM-YYYY")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.display_name
