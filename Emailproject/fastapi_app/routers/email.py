@@ -133,7 +133,6 @@ def inbox(
     if date_to:
         msgs = msgs.filter(created_at__date__lte=date_to)   
 
-    # Final Sort
     msgs = msgs.order_by("-created_at")
 
     return [
@@ -171,6 +170,20 @@ def sent(current_user: User = Depends(get_current_user)):
         for m in msgs
     ]
 
+# LIST DRAFTS
+@router.get("/drafts", response_model=List[EmailRead])
+def list_drafts(current_user: User = Depends(get_current_user)):
+    """
+    Get all emails with status='DRAFT' created by the current user.
+    """
+    emails = Email.objects.filter(
+        sender=current_user,
+        status='DRAFT',
+        is_archived=False,
+        is_deleted_by_sender=False  
+    ).order_by("-created_at")
+    
+    return list(emails)
 
 # FULL THREAD VIEW
 @router.get("/thread/{email_id}")
