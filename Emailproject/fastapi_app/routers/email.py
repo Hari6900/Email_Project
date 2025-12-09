@@ -195,7 +195,9 @@ def email_thread(
         root = Email.objects.get(id=email_id)
     except Email.DoesNotExist:
         raise HTTPException(status_code=404, detail="Email not found")
-
+    if current_user == root.receiver and not root.is_read:
+        root.is_read = True
+        root.save()
     thread = [root] + list(root.replies.all())
 
     return [
@@ -540,5 +542,21 @@ async def list_spam_emails(current_user: User = Depends(get_current_user)):
         ).order_by("-created_at")
     )
     return emails
+
+# LIST UNREAD EMAILS
+@router.get("/unread", response_model=List[EmailRead])
+def list_unread(current_user: User = Depends(get_current_user)):
+    """
+    Get all emails that haven't been opened yet.
+    """
+    emails = Email.objects.filter(
+        receiver=current_user,
+        is_read=False,             
+        is_deleted_by_receiver=False,
+        is_spam=False,
+        status='SENT'
+    ).order_by("-created_at")
+    
+    return list(emails)
 
                                              
