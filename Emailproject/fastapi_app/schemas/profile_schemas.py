@@ -13,9 +13,14 @@ class ProfileCreate(BaseModel):
     #  LIVE CURRENT DATE 
     date_format: date = Field(default_factory=date.today)
 
+class ProfileSettingsUpdate(BaseModel):
+    store_activity: bool | None = None
+    is_2fa_enabled: bool | None = None
+    
 class ProfileRead(ProfileCreate):
     id: int
-
+    store_activity: bool
+    is_2fa_enabled: bool
     class Config:
         from_attributes = True
         
@@ -40,4 +45,11 @@ class ActivityRead(BaseModel):
         except Exception:
             return "Unknown Device"
     class Config:
-        from_attributes = True        
+        from_attributes = True  
+        
+class TwoFactorSetupResponse(BaseModel):
+    secret: str
+    qr_code: str 
+
+class TwoFactorVerifyRequest(BaseModel):
+    code: str              

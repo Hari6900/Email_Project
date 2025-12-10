@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+import pyotp
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from datetime import timedelta
 from asgiref.sync import sync_to_async
@@ -56,40 +57,60 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 
 # LOGIN
 @router.post("/login", response_model=Token)
-def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+def login_for_access_token(
+    request: Request, 
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    otp: str | None = Query(default=None, description="2FA Code if enabled") 
+):
     User = get_user_model()
     email = form_data.username
 
+    # 1. Standard Authentication
     if not email.endswith("@stackly.com"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only stackly.com email accounts are allowed"
-        )
+        raise HTTPException(status_code=400, detail="Only stackly.com emails allowed")
 
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
 
     if not user.check_password(form_data.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
     
-    client_ip = request.client.host
-    user_agent = request.headers.get("user-agent")
+    # 2. 2FA ENFORCEMENT LOGIC (The New Guard)
+    # Check if user has 2FA enabled
+    is_2fa_on = False
+    if hasattr(user, 'profile') and user.profile.is_2fa_enabled:
+        is_2fa_on = True
 
-    LoginActivity.objects.create(
-        user=user,
-        ip_address=client_ip,
-        user_agent=user_agent
-    )
+    if is_2fa_on:
+        if not otp:
+            raise HTTPException(
+                status_code=401, 
+                detail="2FA Required. Please provide the 'otp' parameter."
+            )
+        
+        secret = user.profile.two_factor_secret
+        if not secret:
+             raise HTTPException(status_code=401, detail="2FA Configuration Error")
+
+        totp = pyotp.TOTP(secret)
+        if not totp.verify(otp):
+             raise HTTPException(status_code=401, detail="Invalid 2FA Code")
+
+    # --- PRIVACY CHECK & LOGGING (Your existing code) ---
+    should_record = True 
+    try:
+        if hasattr(user, 'profile'):
+             should_record = user.profile.store_activity
+    except Exception:
+        pass
+
+    if should_record:
+        client_ip = request.client.host
+        user_agent = request.headers.get("user-agent")
+        LoginActivity.objects.create(user=user, ip_address=client_ip, user_agent=user_agent)
+    
     # 4. Generate Token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -98,7 +119,6 @@ def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestFor
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
-
 # FORGOT PASSWORD
 @router.post("/forgot-password", status_code=200)
 def forgot_password(data: ForgotPasswordRequest):
