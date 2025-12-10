@@ -1,5 +1,6 @@
-from pydantic import BaseModel
-from datetime import date
+from pydantic import BaseModel, Field, computed_field
+from datetime import datetime, date
+from user_agents import parse
 
 class ProfileCreate(BaseModel):
     full_name: str
@@ -10,10 +11,33 @@ class ProfileCreate(BaseModel):
     language: str = "English"
 
     #  LIVE CURRENT DATE 
-    date_format: date = date.today()
+    date_format: date = Field(default_factory=date.today)
 
 class ProfileRead(ProfileCreate):
     id: int
 
     class Config:
         from_attributes = True
+        
+class ActivityRead(BaseModel):
+    id: int
+    ip_address: str | None
+    user_agent: str | None
+    timestamp: datetime
+    
+    @computed_field
+    def device_details(self) -> str:
+        """
+        Parses the ugly user_agent string into a readable format.
+        Example: "Mobile Safari on iOS"
+        """
+        if not self.user_agent:
+            return "Unknown Device"
+        
+        try:
+            ua = parse(self.user_agent)
+            return f"{ua.browser.family} on {ua.os.family}"
+        except Exception:
+            return "Unknown Device"
+    class Config:
+        from_attributes = True        
