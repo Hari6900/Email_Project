@@ -22,7 +22,7 @@ class ProfileRead(ProfileCreate):
         from_attributes = True
 
 
-# ✅ -------------------- ACCOUNT SETTINGS --------------------
+#  -------------------- ACCOUNT SETTINGS --------------------
 
 class AccountSettingsUpdate(BaseModel):
     email_alerts: bool
@@ -37,7 +37,7 @@ class AccountSettingsRead(AccountSettingsUpdate):
         from_attributes = True
 
 
-# ✅ -------------------- ACTIVITY LOGS --------------------
+#  -------------------- ACTIVITY LOGS --------------------
 
 class ActivityLogRead(BaseModel):
     id: int
@@ -49,7 +49,7 @@ class ActivityLogRead(BaseModel):
         from_attributes = True
 
 
-# ✅ -------------------- TWO-FA AUTH --------------------
+#  -------------------- TWO-FA AUTH --------------------
 
 class TwoFactorSetup(BaseModel):
     enable: bool
