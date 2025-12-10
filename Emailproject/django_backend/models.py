@@ -163,3 +163,13 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.display_name
+    
+class LoginActivity(models.Model):
+    user = models.ForeignKey(User, related_name="login_activities", on_delete=models.CASCADE)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True) # Stores browser info
+    location = models.CharField(max_length=100, null=True, blank=True) # Optional: For GeoIP later
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.email} - {self.timestamp}"    
