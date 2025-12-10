@@ -163,29 +163,13 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.display_name
+    
+class LoginActivity(models.Model):
+    user = models.ForeignKey(User, related_name="login_activities", on_delete=models.CASCADE)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True) # Stores browser info
+    location = models.CharField(max_length=100, null=True, blank=True) # Optional: For GeoIP later
+    timestamp = models.DateTimeField(auto_now_add=True)
 
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    bio = models.TextField(null=True, blank=True)
-    profile_pic = models.ImageField(upload_to="profiles/", null=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-
-class AccountSettings(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    email_alerts = models.BooleanField(default=True)
-    login_alerts = models.BooleanField(default=True)
-    dark_mode = models.BooleanField(default=False)
-
-
-class ActivityLog(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    action = models.CharField(max_length=255)
-    ip_address = models.CharField(max_length=50)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-
-class TwoFactorAuth(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    secret = models.CharField(max_length=255)
-    is_enabled = models.BooleanField(default=False)
+    def __str__(self):
+        return f"{self.user.email} - {self.timestamp}"    

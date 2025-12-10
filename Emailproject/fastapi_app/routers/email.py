@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.core.files.base import ContentFile
 from django_backend.models import Email, User, Attachment
 from django.db.models import Q
-from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpdate, DraftCreate
+from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpdate, DraftCreate, BulkReadRequest
 from fastapi_app.dependencies.auth import get_current_user 
 from asgiref.sync import sync_to_async 
 from fastapi_app.schemas.email_schemas import EmailRead
@@ -232,7 +232,7 @@ def delete_email(email_id: int, current_user: User = Depends(get_current_user)):
     email_obj.save()
     return None    
 
-# UPDATE FLAGS (Important/Favorite)
+# UPDATE FLAGS (Important/Favorite/Read)
 @router.patch("/{email_id}")
 def update_email_flags(
     email_id: int, 
@@ -244,20 +244,16 @@ def update_email_flags(
     except Email.DoesNotExist:
         raise HTTPException(status_code=404, detail="Email not found")
 
-    
     if current_user != email_obj.receiver:
         raise HTTPException(status_code=403, detail="You can only flag emails in your inbox")
 
-    
-    if data.is_important is not None:
-        email_obj.is_important = data.is_important
-    if data.is_favorite is not None:
-        email_obj.is_favorite = data.is_favorite
-    if data.is_archived is not None:
-        email_obj.is_archived = data.is_archived    
+    update_data = data.model_dump(exclude_unset=True) 
+
+    for key, value in update_data.items():
+        setattr(email_obj, key, value)    
     
     email_obj.save()
-    return {"message": "Email updated", "is_important": email_obj.is_important, "is_favorite": email_obj.is_favorite, "is_archived": email_obj.is_archived}
+    return {"message": "Email updated", "id": email_obj.id, "is_read": email_obj.is_read, "is_important": email_obj.is_important, "is_favorite": email_obj.is_favorite, "is_archived": email_obj.is_archived}
 
 # SAVE DRAFT
 @router.post("/draft")
@@ -558,5 +554,26 @@ def list_unread(current_user: User = Depends(get_current_user)):
     ).order_by("-created_at")
     
     return list(emails)
+
+@router.post("/mark-read")
+def mark_all_read(
+    data: BulkReadRequest, 
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Mark multiple emails as read in one go.
+    Optimized for performance.
+    """
+    qs = Email.objects.filter(
+        id__in=data.ids, 
+        receiver=current_user
+    )
+    
+    updated_count = qs.update(is_read=True)
+
+    return {
+        "message": "Emails updated", 
+        "count": updated_count
+    }
 
                                              
