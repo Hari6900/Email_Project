@@ -1,43 +1,59 @@
-from pydantic import BaseModel, Field, computed_field
-from datetime import datetime, date
-from user_agents import parse
+from pydantic import BaseModel
+from datetime import date, datetime
+from typing import Optional
+
+
+#  -------------------- PROFILE --------------------
 
 class ProfileCreate(BaseModel):
     full_name: str
     display_name: str
-    phone_number: str | None = None
-    date_of_birth: date | None = None
-    address: str | None = None
+    phone_number: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    bio: Optional[str] = None       #  Renamed from address → bio
     language: str = "English"
+    date_format: date = date.today()   #  Current date auto-fill
 
-    #  LIVE CURRENT DATE 
-    date_format: date = Field(default_factory=date.today)
 
 class ProfileRead(ProfileCreate):
     id: int
 
     class Config:
         from_attributes = True
-        
-class ActivityRead(BaseModel):
+
+
+# ✅ -------------------- ACCOUNT SETTINGS --------------------
+
+class AccountSettingsUpdate(BaseModel):
+    email_alerts: bool
+    login_alerts: bool
+    dark_mode: bool
+
+
+class AccountSettingsRead(AccountSettingsUpdate):
     id: int
-    ip_address: str | None
-    user_agent: str | None
-    timestamp: datetime
-    
-    @computed_field
-    def device_details(self) -> str:
-        """
-        Parses the ugly user_agent string into a readable format.
-        Example: "Mobile Safari on iOS"
-        """
-        if not self.user_agent:
-            return "Unknown Device"
-        
-        try:
-            ua = parse(self.user_agent)
-            return f"{ua.browser.family} on {ua.os.family}"
-        except Exception:
-            return "Unknown Device"
+
     class Config:
-        from_attributes = True        
+        from_attributes = True
+
+
+# ✅ -------------------- ACTIVITY LOGS --------------------
+
+class ActivityLogRead(BaseModel):
+    id: int
+    action: str
+    ip_address: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ✅ -------------------- TWO-FA AUTH --------------------
+
+class TwoFactorSetup(BaseModel):
+    enable: bool
+
+
+class TwoFactorVerify(BaseModel):
+    code: str
