@@ -1,12 +1,14 @@
 import pyotp
-import qrcode
 import io
 import base64
 from fastapi import APIRouter, Depends, HTTPException
 from asgiref.sync import sync_to_async
 from typing import List
 from django_backend.models import UserProfile, LoginActivity
-from fastapi_app.schemas.profile_schemas import ProfileCreate, ProfileRead, ActivityRead, ProfileSettingsUpdate, TwoFactorSetupResponse, TwoFactorVerifyRequest
+from fastapi_app.schemas.profile_schemas import (
+    ProfileCreate, ProfileRead, ActivityRead,
+    ProfileSettingsUpdate, TwoFactorSetupResponse, TwoFactorVerifyRequest
+)
 from fastapi_app.routers.auth import get_current_user
 from django_backend.models import User
 
@@ -31,6 +33,7 @@ async def create_profile(
 
     return profile
 
+
 # GET MY PROFILE
 @router.get("/", response_model=ProfileRead)
 async def get_my_profile(current_user: User = Depends(get_current_user)):
@@ -41,26 +44,21 @@ async def get_my_profile(current_user: User = Depends(get_current_user)):
 
     return profile
 
+
 @router.get("/activity", response_model=List[ActivityRead])
 def get_account_activity(
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Fetch the last 10 login sessions for the current user.
-    """
     activities = LoginActivity.objects.filter(user=current_user).order_by("-timestamp")[:10]
-    
     return list(activities)
 
-# NEW: Settings Toggle Endpoint
+
+# UPDATE SETTINGS
 @router.patch("/settings", response_model=ProfileRead)
 async def update_settings(
     data: ProfileSettingsUpdate,
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Toggle Account Settings like Activity Logging or 2FA.
-    """
     try:
         profile = await sync_to_async(UserProfile.objects.get)(user=current_user)
     except UserProfile.DoesNotExist:
@@ -75,13 +73,10 @@ async def update_settings(
     
     return profile
 
+
 # 1. SETUP 2FA (Generate Key & QR)
 @router.post("/2fa/setup", response_model=TwoFactorSetupResponse)
 async def setup_two_factor(current_user: User = Depends(get_current_user)):
-    """
-    Generates a new 2FA Secret and returns the QR Code.
-    Auto-creates a profile if one does not exist.
-    """
     @sync_to_async
     def get_or_create_profile(user):
         profile, created = UserProfile.objects.get_or_create(
@@ -97,37 +92,31 @@ async def setup_two_factor(current_user: User = Depends(get_current_user)):
     profile = await get_or_create_profile(current_user)
 
     secret = pyotp.random_base32()
-    
     profile.two_factor_secret = secret
     await sync_to_async(profile.save)()
 
-    # format: otpauth://totp/Stackly:user@email.com?secret=JBSWY...&issuer=Stackly
+    # Generate otpauth compatible URI
     uri = pyotp.totp.TOTP(secret).provisioning_uri(
         name=current_user.email,
         issuer_name="Stackly"
     )
 
-    img = qrcode.make(uri)
-    buffered = io.BytesIO()
-    img.save(buffered, format="PNG")
-    
-    qr_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    # Fallback: Base64 the URI string (QR apps accept this)
+    qr_bytes = uri.encode("utf-8")
+    qr_base64 = base64.b64encode(qr_bytes).decode("utf-8")
 
     return {
         "secret": secret,
         "qr_code": qr_base64
     }
 
-# 2. VERIFY 2FA (The Handshake)
+
+# 2. VERIFY 2FA
 @router.post("/2fa/verify")
 async def verify_two_factor(
     data: TwoFactorVerifyRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Validates the code from the user's phone.
-    If valid, officially ENABLES 2FA.
-    """
     profile = await sync_to_async(UserProfile.objects.get)(user=current_user)
 
     if not profile.two_factor_secret:
