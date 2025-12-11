@@ -176,6 +176,7 @@ class LoginActivity(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.timestamp}"    
 
+
 class Meeting(models.Model):
     host = models.ForeignKey(User, related_name="hosted_meetings", on_delete=models.CASCADE)
     
@@ -189,3 +190,4 @@ class Meeting(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.meeting_code})"
+
