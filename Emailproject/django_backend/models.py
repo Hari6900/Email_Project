@@ -176,14 +176,18 @@ class LoginActivity(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.timestamp}"    
 
-class Note(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notes")
-    title = models.CharField(max_length=255, blank=True)
-    content = models.TextField()
-    is_pinned = models.BooleanField(default=False)
 
+class Meeting(models.Model):
+    host = models.ForeignKey(User, related_name="hosted_meetings", on_delete=models.CASCADE)
+    
+    title = models.CharField(max_length=255, default="New Meeting")
+    
+    meeting_code = models.CharField(max_length=50, unique=True)
+    
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"Note({self.user.email}) - {self.title[:20]}"
+        return f"{self.title} ({self.meeting_code})"
+
