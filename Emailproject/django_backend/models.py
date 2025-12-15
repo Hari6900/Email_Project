@@ -187,7 +187,12 @@ class Meeting(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     
     is_active = models.BooleanField(default=True)
-
+    TYPE_CHOICES = (
+        ('audio', 'Audio Call'),
+        ('video', 'Video Call'),
+        ('group', 'Group Call'),
+    )
+    call_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='video') 
     def __str__(self):
-        return f"{self.title} ({self.meeting_code})"
+        return f"{self.title} ({self.meeting_code}) - {self.call_type}"
 
