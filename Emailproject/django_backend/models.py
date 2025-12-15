@@ -2,6 +2,9 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseU
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.conf import settings
+
+
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -196,3 +199,56 @@ class Meeting(models.Model):
     def __str__(self):
         return f"{self.title} ({self.meeting_code}) - {self.call_type}"
 
+        
+    
+class Note(models.Model):
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+    def __str__(self):
+        return self.title
+
+
+class Event(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    start_datetime = models.DateTimeField()
+    end_datetime = models.DateTimeField()
+    is_all_day = models.BooleanField(default=False)
+    location = models.CharField(max_length=255, blank=True, null=True)
+    url = models.URLField(blank=True, null=True)
+    color = models.CharField(max_length=20, default="blue")
+    repeat_rule = models.CharField(max_length=255, blank=True, null=True)
+    timezone = models.CharField(max_length=64, default="UTC")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_events")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+class EventAttendee(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=(("accepted","Accepted"),("declined","Declined"),("maybe","Maybe"),("pending","Pending")), default="pending")
+    added_at = models.DateTimeField(auto_now_add=True)
+
+class EventReminder(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    minutes_before = models.IntegerField()
+
+class GovernmentHoliday(models.Model):
+    name = models.CharField(max_length=255)
+    date = models.DateField()
+    description = models.TextField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["date"]
+        verbose_name = "Government Holiday"
+        verbose_name_plural = "Government Holidays"
+
+    def __str__(self):
+        return f"{self.name} ({self.date})"
