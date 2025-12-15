@@ -5,7 +5,7 @@ from django.core.files.base import ContentFile
 from typing import List
 from django.contrib.auth import get_user_model
 from asgiref.sync import sync_to_async
-
+from fastapi_app.routers.notifications import create_notification
 from django_backend.models import ChatRoom, ChatMessage
 from fastapi_app.schemas.chat_schemas import ChatRoomCreate, ChatRoomRead, MessageRead, ChatMemberUpdate
 from fastapi_app.core.socket_manager import manager
@@ -190,6 +190,16 @@ async def upload_chat_attachment(
         
             msg.attachment.save(file.filename, ContentFile(file_content))
             msg.save()
+
+            for participant in room.participants.all():
+                if participant != current_user:
+                    create_notification(
+                        recipient=participant,
+                        message=f"{current_user.email} sent a file in {room.name or 'Chat'}",
+                        type_choice="chat",
+                        related_id=room.id
+                    )
+
             return msg, room
         except ChatRoom.DoesNotExist:
             return None, None
@@ -239,6 +249,16 @@ async def send_text_message(
                 content=data.content
             )
             process_mentions(msg)
+
+            for participant in room.participants.all():
+                if participant != current_user:
+                    create_notification(
+                        recipient=participant,
+                        message=f"New message from {current_user.email} in {room.name or 'Chat'}",
+                        type_choice="chat",
+                        related_id=room.id
+                    )
+
             return msg
         except ChatRoom.DoesNotExist:
             return None
