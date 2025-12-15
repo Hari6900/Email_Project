@@ -11,6 +11,7 @@ from fastapi_app.schemas.email_schemas import EmailCreate, EmailReply, EmailUpda
 from fastapi_app.dependencies.auth import get_current_user 
 from asgiref.sync import sync_to_async 
 from fastapi_app.schemas.email_schemas import EmailRead
+from fastapi_app.routers.notifications import create_notification
 
 router = APIRouter()
 User = get_user_model()
@@ -30,20 +31,18 @@ def get_attachments(email_obj):
         for a in email_obj.attachments.all()
     ]        
 
-
 # SEND A EMAIL
 @router.post("/send")
 def send_email(
     receiver_email: str = Form(...),
     subject: str = Form(...),
     body: str = Form(...),
-    
     file: Union[UploadFile, str, None] = File(None),
-    
     current_user: User = Depends(get_current_user)
 ):  
     if isinstance(file, str):
         file = None
+        
     ensure_stackly_email(current_user.email)
     ensure_stackly_email(receiver_email)
 
@@ -54,11 +53,20 @@ def send_email(
 
     email_obj = Email.objects.create(
         sender=current_user,
-        receiver=receiver,
+        receiver=receiver,     
         subject=subject,
-        body=body
+        body=body,
+        status='SENT'
     )
 
+    if receiver:               
+        create_notification(
+            recipient=receiver, 
+            message=f"New email from {current_user.email}: {subject}",
+            type_choice="email",
+            related_id=email_obj.id
+        )
+    
     file_url = None
     if file and file.filename:
         file_content = file.file.read()
@@ -98,7 +106,6 @@ def reply_email(
 
     return {"message": "Reply sent", "id": reply.id}
 
-
 # INBOX
 @router.get("/inbox")
 def inbox(
@@ -118,13 +125,11 @@ def inbox(
         is_archived=False 
     )
 
-    # --- APPLY FILTERS ---
     if q:
         msgs = msgs.filter(
             Q(subject__icontains=q) | Q(body__icontains=q)
         )
 
-    
     if sender:
         msgs = msgs.filter(sender__email__icontains=sender)
 
@@ -271,7 +276,6 @@ def save_draft(
         except User.DoesNotExist:
             raise HTTPException(status_code=404, detail="Receiver not found")
 
-    # 2. Create the Draft
     draft = Email.objects.create(
         sender=current_user,
         receiver=receiver,
@@ -512,7 +516,6 @@ async def mark_email_as_spam(
     email_id: int,
     current_user: User = Depends(get_current_user),
 ):
-    # Only allow marking emails that belong to the logged-in user
     email = await sync_to_async(
         Email.objects.filter(id=email_id, receiver=current_user).first
     )()

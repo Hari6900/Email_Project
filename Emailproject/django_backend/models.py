@@ -199,8 +199,6 @@ class Meeting(models.Model):
     def __str__(self):
         return f"{self.title} ({self.meeting_code}) - {self.call_type}"
 
-        
-    
 class Note(models.Model):
     title = models.CharField(max_length=255)
     content = models.TextField()
@@ -252,3 +250,25 @@ class GovernmentHoliday(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.date})"
+
+class Notification(models.Model):
+    recipient = models.ForeignKey(User, related_name="notifications", on_delete=models.CASCADE)
+    
+    message = models.CharField(max_length=255)
+    
+    TYPE_CHOICES = (
+        ('email', 'Email'),
+        ('meet', 'Meeting'),
+        ('chat', 'Chat'),
+        ('task', 'Task'),
+        ('system', 'System'),
+    )
+    notification_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='system')
+    
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    related_id = models.IntegerField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Notification for {self.recipient}: {self.message}"
+
