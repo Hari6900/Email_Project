@@ -9,20 +9,35 @@ router = APIRouter()
 User = get_user_model()
 
 # CREATE A MEETING
-@router.post("/create", response_model=MeetingRead)
-def create_meeting(
-    data: MeetingCreate,
-    current_user: User = Depends(get_current_user)
-):
+def _generate_meeting(user, title, type_choice):
     code = secrets.token_urlsafe(8)
-
-    meeting = Meeting.objects.create(
-        host=current_user,
-        title=data.title,
-        meeting_code=code
+    return Meeting.objects.create(
+        host=user,
+        title=title,
+        meeting_code=code,
+        call_type=type_choice 
     )
 
-    return meeting
+@router.post("/audio", response_model=MeetingRead)
+def create_audio_call(
+    data: MeetingCreate, 
+    current_user: User = Depends(get_current_user)
+):
+    return _generate_meeting(current_user, data.title, "audio")
+
+@router.post("/video", response_model=MeetingRead)
+def create_video_call(
+    data: MeetingCreate, 
+    current_user: User = Depends(get_current_user)
+):
+    return _generate_meeting(current_user, data.title, "video")
+
+@router.post("/group", response_model=MeetingRead)
+def create_group_call(
+    data: MeetingCreate, 
+    current_user: User = Depends(get_current_user)
+):
+    return _generate_meeting(current_user, data.title, "group")
 
 # LIST MY MEETINGS
 @router.get("/list", response_model=list[MeetingRead])
