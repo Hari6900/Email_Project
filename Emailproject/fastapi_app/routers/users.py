@@ -28,14 +28,16 @@ def create_user(user_in: UserCreate):
 
     # 2. Create the user (Hash the password!)
     user = User(
-        email=user_in.email,
-        first_name=user_in.first_name,   
-        last_name=user_in.last_name,     
-        gender=user_in.gender,           
-        nationality=user_in.nationality,
-        role="STAFF", 
-        is_active=True
-    )
+    email=user_in.email,
+    recovery_email=user_in.recovery_email,
+    first_name=user_in.first_name,
+    surname=user_in.surname,          
+    last_name=user_in.last_name,
+    dob=user_in.dob,                  
+    mobile_number=user_in.mobile_number,  
+    gender=user_in.gender,
+    is_active=True
+)
     user.set_password(user_in.password) 
     user.save()
 

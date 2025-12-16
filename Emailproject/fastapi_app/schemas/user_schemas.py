@@ -1,24 +1,33 @@
 import re
 import requests
 import hashlib
-from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo, Field
+from datetime import date
+from typing import Optional
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
+
 
 class UserLogin(BaseModel):
-    username: str 
+    username: str
     password: str
+
 
 class Token(BaseModel):
     access_token: str
     token_type: str
-    
+
+
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
-    first_name: str = Field(..., min_length=1)
+    recovery_email: Optional[EmailStr] = None
+    surname: Optional[str] = None
+    first_name: str
     last_name: str
-    gender: str | None = None      
-    nationality: str | None = None
-    
+    dob: Optional[date]
+    mobile_number: Optional[str]
+    gender: str
+    password: str
+    confirm_password: str
+
     @field_validator('password')
     def validate_password_strength(cls, v):
         if len(v) < 12:
@@ -36,45 +45,58 @@ class UserCreate(BaseModel):
         try:
             sha1_password = hashlib.sha1(v.encode('utf-8')).hexdigest().upper()
             prefix, suffix = sha1_password[:5], sha1_password[5:]
-            
-            response = requests.get(f"https://api.pwnedpasswords.com/range/{prefix}", timeout=5)
-            
+
+            response = requests.get(
+                f"https://api.pwnedpasswords.com/range/{prefix}",
+                timeout=5
+            )
+
             if suffix in response.text:
-                raise ValueError('This password has been exposed in a data breach. Please choose a different one.')
+                raise ValueError(
+                    'This password has been exposed in a data breach. Please choose a different one.'
+                )
         except requests.RequestException:
             pass
 
         return v
 
-# 2. Schema for Reading a User (Output - NO Password!)
+    @model_validator(mode="after")
+    def check_passwords_match(self):
+        if self.password != self.confirm_password:
+            raise ValueError("Password and confirm password do not match")
+        return self
+
+
+
 class UserRead(BaseModel):
     id: int
     email: EmailStr
-    first_name: str 
-    last_name: str | None = None
-    gender: str | None = None
-    nationality: str | None = None
-    role: str
+    first_name: str
+    last_name: Optional[str] = None
+    gender: Optional[str] = None
+    nationality: Optional[str] = None   
+    role: Optional[str] = None           
     is_active: bool
 
     class Config:
         from_attributes = True
-        
+
+
 class UserUpdate(BaseModel):
-    first_name: str | None = None
-    last_name: str | None = None    
-    gender: str | None = None      
-    nationality: str | None = None    
-    
-# 1. The Request (Step 1)
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    gender: Optional[str] = None
+    nationality: Optional[str] = None    
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
-# 2. The Reset (Step 2)
+
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
-    
+
     @field_validator('new_password')
     def validate_password_strength(cls, v):
-        return UserCreate.validate_password_strength(v)    
+        return UserCreate.validate_password_strength(v)
