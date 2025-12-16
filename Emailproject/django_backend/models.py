@@ -38,13 +38,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=30, blank=True)
     last_name = models.CharField(max_length=30, blank=True)
+    surname = models.CharField(max_length=100, blank=True, null=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, null=True)
-    nationality = models.CharField(max_length=50, blank=True, null=True)
+    dob = models.DateField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
-    is_staff = models.BooleanField(default=False)
+    mobile_number = models.CharField(max_length=15, blank=True, null=True)
     date_joined = models.DateTimeField(default=timezone.now)
     
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='STAFF')
+    recovery_email = models.EmailField(blank=True,null=True)
 
     objects = CustomUserManager()
 
