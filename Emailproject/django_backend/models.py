@@ -134,19 +134,25 @@ class ChatMessage(models.Model):
 class Task(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    email = models.ForeignKey(Email, null=True, blank=True, on_delete=models.SET_NULL)
-    status = models.CharField(
-        max_length=20,
-        choices=[
-            ("todo", "To Do"),
-            ("in_progress", "In Progress"),
-            ("done", "Done"),
-        ],
-        default="todo"
+    created_by = models.ForeignKey(User, related_name="created_tasks", on_delete=models.CASCADE)
+    assigned_to = models.ForeignKey(User, related_name="assigned_tasks", null=True, blank=True, on_delete=models.SET_NULL)
+    due_date = models.DateTimeField(null=True, blank=True)
+    PRIORITY_CHOICES = (
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
     )
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default="medium")
+    email = models.ForeignKey(Email, null=True, blank=True, on_delete=models.SET_NULL)
+    STATUS_CHOICES = (
+        ("todo", "To Do"),
+        ("in_progress", "In Progress"),
+        ("done", "Done"),
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="todo")
     created_at = models.DateTimeField(auto_now_add=True)
-
+    updated_at = models.DateTimeField(auto_now=True)
+    
     def __str__(self):
         return self.title
 
