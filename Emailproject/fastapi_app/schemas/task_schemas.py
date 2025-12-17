@@ -5,7 +5,8 @@ from typing import Optional
 class UserTiny(BaseModel):
     id: int
     email: str
-    display_name: str
+    first_name: str | None = None  
+    
     class Config:
         from_attributes = True
 

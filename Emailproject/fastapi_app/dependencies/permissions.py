@@ -21,7 +21,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     
     try:
-        # Decode the JWT
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
@@ -29,7 +28,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise credentials_exception
 
-    # Get User from Django DB
     User = get_user_model()
     try:
         user = User.objects.get(email=email)
@@ -38,7 +36,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
     return user
 
-# --- RBAC CHECKS (Task 4) ---
 
 def get_current_active_user(current_user = Depends(get_current_user)):
     if not current_user.is_active:
@@ -46,10 +43,10 @@ def get_current_active_user(current_user = Depends(get_current_user)):
     return current_user
 
 def is_admin(current_user = Depends(get_current_active_user)):
-    """Only allows users with role='ADMIN'"""
-    if current_user.role != "ADMIN":
+    """Only allows users who are Superusers (Admins)"""
+    if not current_user.is_superuser:
          raise HTTPException(
-            status_code=403, # Forbidden
+            status_code=403, 
             detail="You do not have permission to access this resource"
         )
     return current_user
