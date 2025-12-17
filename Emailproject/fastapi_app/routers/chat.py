@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile
+from django.db.models import Q
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile, Query
 import re
 import secrets
 from django.core.files.base import ContentFile
-from typing import List
+from typing import List, Optional
 from django.contrib.auth import get_user_model
 from asgiref.sync import sync_to_async
 from fastapi_app.routers.notifications import create_notification
@@ -35,13 +36,50 @@ def create_room(data: ChatRoomCreate, current_user: User = Depends(get_current_u
             
     return format_room_response(room)
 
+@router.get("/search", response_model=List[MessageRead])
+def search_messages(
+    q: str = Query(..., min_length=1, description="Search term"),
+    current_user = Depends(get_current_user)
+):
+    """
+    Search for messages across ALL rooms the user belongs to.
+    """
+    user_room_ids = current_user.chat_rooms.values_list('id', flat=True)
+    
+    msgs = ChatMessage.objects.filter(
+        room__id__in=user_room_ids,   
+        is_deleted=False,             
+        content__icontains=q         
+    ).order_by("-timestamp")
+    
+    results = []
+    for m in msgs:
+        url = None
+        if m.attachment:
+            try:
+                url = m.attachment.url
+            except ValueError:
+                url = None  
+
+        results.append({
+            "id": m.id,
+            "sender_email": m.sender.email,
+            "content": m.content,
+            "attachment_url": url,
+            "timestamp": m.timestamp,
+            "read_count": m.read_by.count(),
+            "is_starred": m.starred_by.filter(id=current_user.id).exists()
+        })
+
+    return results
+
 @router.get("/rooms", response_model=List[ChatRoomRead])
 def list_rooms(current_user: User = Depends(get_current_user)):
     rooms = current_user.chat_rooms.all().order_by("-created_at")
     return [format_room_response(r) for r in rooms]
 
 @router.get("/rooms/{room_id}/messages", response_model=List[MessageRead])
-def get_messages(room_id: int, current_user: User = Depends(get_current_user)):
+def get_messages(room_id: int, q: Optional[str] = Query(None, description="Search within this room"), current_user: User = Depends(get_current_user)):
     try:
         room = ChatRoom.objects.get(id=room_id)
         if current_user not in room.participants.all():
@@ -49,7 +87,12 @@ def get_messages(room_id: int, current_user: User = Depends(get_current_user)):
     except ChatRoom.DoesNotExist:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    msgs = room.messages.filter(is_deleted=False).order_by("timestamp")
+    msgs = room.messages.filter(is_deleted=False)
+    
+    if q:
+        msgs = msgs.filter(content__icontains=q)
+        
+    msgs = msgs.order_by("timestamp")
     
     results = []
     for m in msgs:
