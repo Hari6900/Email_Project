@@ -130,24 +130,48 @@ class ChatMessage(models.Model):
     is_deleted = models.BooleanField(default=False)
     mentions = models.ManyToManyField(User, related_name="mentioned_in_messages", blank=True)
     def __str__(self):
-        return f"{self.sender.email}: {self.content[:20]}"    
+        return f"{self.sender.email}: {self.content[:20]}"
+    
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    color = models.CharField(max_length=7, default="#FFFFFF")
+
+    def __str__(self):
+        return self.name          
+
+class Project(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    owner = models.ForeignKey(User, related_name="owned_projects", on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
 
 class Task(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    email = models.ForeignKey(Email, null=True, blank=True, on_delete=models.SET_NULL)
-    status = models.CharField(
-        max_length=20,
-        choices=[
-            ("todo", "To Do"),
-            ("in_progress", "In Progress"),
-            ("done", "Done"),
-        ],
-        default="todo"
+    created_by = models.ForeignKey(User, related_name="created_tasks", on_delete=models.CASCADE)
+    assigned_to = models.ForeignKey(User, related_name="assigned_tasks", null=True, blank=True, on_delete=models.SET_NULL)
+    due_date = models.DateTimeField(null=True, blank=True)
+    tags = models.ManyToManyField(Tag, related_name="tasks", blank=True)
+    project = models.ForeignKey(Project, related_name="tasks", on_delete=models.CASCADE, null=True, blank=True)
+    PRIORITY_CHOICES = (
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
     )
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default="medium")
+    email = models.ForeignKey(Email, null=True, blank=True, on_delete=models.SET_NULL)
+    STATUS_CHOICES = (
+        ("todo", "To Do"),
+        ("in_progress", "In Progress"),
+        ("done", "Done"),
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="todo")
     created_at = models.DateTimeField(auto_now_add=True)
-
+    updated_at = models.DateTimeField(auto_now=True)
+    
     def __str__(self):
         return self.title
 
@@ -272,4 +296,25 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notification for {self.recipient}: {self.message}"
+    
+class TaskComment(models.Model):
+    task = models.ForeignKey(Task, related_name="comments", on_delete=models.CASCADE)
+    author = models.ForeignKey(User, related_name="task_comments", on_delete=models.CASCADE)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Comment by {self.author.email} on {self.task.title}"    
+    
+class TaskActivity(models.Model):
+    task = models.ForeignKey(Task, related_name="activity_log", on_delete=models.CASCADE)
+    actor = models.ForeignKey(User, related_name="actions", on_delete=models.CASCADE)
+    action_type = models.CharField(max_length=50) 
+    details = models.TextField() 
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.actor.email} - {self.action_type}"   
+    
+   
 
