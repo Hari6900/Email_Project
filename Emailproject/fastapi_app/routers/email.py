@@ -12,6 +12,14 @@ from fastapi_app.dependencies.auth import get_current_user
 from asgiref.sync import sync_to_async 
 from fastapi_app.schemas.email_schemas import EmailRead
 from fastapi_app.routers.notifications import create_notification
+from fastapi import UploadFile, File
+from pathlib import Path
+import shutil
+import os
+from fastapi import UploadFile
+
+from fastapi_app.utils.file_convert import docx_to_pdf
+
 
 router = APIRouter()
 User = get_user_model()
@@ -40,6 +48,7 @@ def send_email(
     file: Union[UploadFile, str, None] = File(None),
     current_user: User = Depends(get_current_user)
 ):  
+    # 🔹 Keep your original string check
     if isinstance(file, str):
         file = None
         
@@ -51,6 +60,7 @@ def send_email(
     except User.DoesNotExist:
         raise HTTPException(status_code=404, detail="Receiver does not exist")
 
+    # 🔹 Your original Email creation (UNCHANGED)
     email_obj = Email.objects.create(
         sender=current_user,
         receiver=receiver,     
@@ -59,6 +69,7 @@ def send_email(
         status='SENT'
     )
 
+    # 🔹 Your original notification logic (UNCHANGED)
     if receiver:               
         create_notification(
             recipient=receiver, 
@@ -66,13 +77,35 @@ def send_email(
             type_choice="email",
             related_id=email_obj.id
         )
-    
+
     file_url = None
+
+    # ===========================
+    # 🔹 ATTACHMENT LOGIC (ADDED)
+    # ===========================
     if file and file.filename:
-        file_content = file.file.read()
-        if len(file_content) > 0:
+        upload_dir = Path("media/temp")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        temp_path = upload_dir / file.filename
+
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        ext = temp_path.suffix.lower()
+
+        # ✅ Convert Word → PDF
+        if ext in [".doc", ".docx"]:
+            pdf_path = temp_path.with_suffix(".pdf")
+            docx_to_pdf(temp_path, pdf_path)
+            final_path = pdf_path
+        else:
+            final_path = temp_path
+
+        # 🔹 Save attachment to Django model (UNCHANGED logic)
+        with open(final_path, "rb") as f:
             attachment = Attachment(email=email_obj)
-            attachment.file.save(file.filename, ContentFile(file_content))
+            attachment.file.save(final_path.name, ContentFile(f.read()))
             attachment.save()
             file_url = attachment.file.url
 

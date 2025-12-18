@@ -5,6 +5,12 @@ setup_django()
 from fastapi_app.routers import auth, users, email, chat, analytics,  meet, calendar, notes
 from fastapi_app.routers import auth, users, email, chat, analytics, meet, notifications
 
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+
+
+
 
 from fastapi_app.routers import task  
 from fastapi_app.routers import profile
