@@ -1,5 +1,6 @@
 from django.db.models import Q
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile, Query
+import json
 import re
 import secrets
 from django.core.files.base import ContentFile
@@ -7,8 +8,8 @@ from typing import List, Optional
 from django.contrib.auth import get_user_model
 from asgiref.sync import sync_to_async
 from fastapi_app.routers.notifications import create_notification
-from django_backend.models import ChatRoom, ChatMessage
-from fastapi_app.schemas.chat_schemas import ChatRoomCreate, ChatRoomRead, MessageRead, ChatMemberUpdate
+from django_backend.models import ChatRoom, ChatMessage, Email
+from fastapi_app.schemas.chat_schemas import ChatRoomCreate, ChatRoomRead, MessageRead, ChatMemberUpdate, MessageUpdate
 from fastapi_app.core.socket_manager import manager
 from fastapi_app.dependencies.auth import get_current_user
 
@@ -17,17 +18,33 @@ User = get_user_model()
 
 # REST API (The Paperwork)
 @router.post("/rooms", response_model=ChatRoomRead)
-def create_room(data: ChatRoomCreate, current_user: User = Depends(get_current_user)):
+def create_room(data: ChatRoomCreate, current_user = Depends(get_current_user)):
+    related_email_obj = None
+    initial_participants = list(data.participant_emails) 
+
+    if data.email_id:
+        try:
+            related_email_obj = Email.objects.get(id=data.email_id)
+            
+            if related_email_obj.sender.email not in initial_participants:
+                initial_participants.append(related_email_obj.sender.email)
+            
+            if related_email_obj.receiver and related_email_obj.receiver.email not in initial_participants:
+                initial_participants.append(related_email_obj.receiver.email)
+                
+        except Email.DoesNotExist:
+            raise HTTPException(status_code=404, detail="Linked email not found")
+
     room = ChatRoom.objects.create(
         name=data.name,
-        is_group=data.is_group
+        is_group=data.is_group,
+        related_email=related_email_obj
     )
     
-    participants = list(data.participant_emails)
-    if current_user.email not in participants:
-        participants.append(current_user.email)
+    if current_user.email not in initial_participants:
+        initial_participants.append(current_user.email)
         
-    for email in participants:
+    for email in initial_participants:
         try:
             u = User.objects.get(email=email)
             room.participants.add(u)
@@ -50,7 +67,7 @@ def search_messages(
         room__id__in=user_room_ids,   
         is_deleted=False,             
         content__icontains=q         
-    ).order_by("-timestamp")
+    ).select_related('parent', 'parent__sender').order_by("-timestamp") # Optimized query
     
     results = []
     for m in msgs:
@@ -68,18 +85,56 @@ def search_messages(
             "attachment_url": url,
             "timestamp": m.timestamp,
             "read_count": m.read_by.count(),
-            "is_starred": m.starred_by.filter(id=current_user.id).exists()
+            "is_starred": m.starred_by.filter(id=current_user.id).exists(),
+            "parent_id": m.parent.id if m.parent else None,
+            "parent_content": m.parent.content if m.parent else None,
+            "parent_sender": m.parent.sender.email if m.parent else None
+        })
+
+    return results
+# LIST ROOMS 
+@router.get("/rooms", response_model=List[ChatRoomRead])
+def list_rooms(current_user = Depends(get_current_user)):
+    """
+    List rooms with Unread Count AND Last Message Preview.
+    """
+    rooms = current_user.chat_rooms.all().prefetch_related('messages', 'participants')
+
+    results = []
+    for room in rooms:
+        unread_count = room.messages.filter(is_deleted=False).exclude(read_by=current_user).count()
+
+        last_msg_obj = room.messages.filter(is_deleted=False).order_by("-timestamp").first()
+        
+        last_message_data = None
+        if last_msg_obj:
+            last_message_data = {
+                "id": last_msg_obj.id,
+                "sender_email": last_msg_obj.sender.email,
+                "content": last_msg_obj.content,
+                "attachment_url": last_msg_obj.attachment.url if last_msg_obj.attachment else None,
+                "timestamp": last_msg_obj.timestamp,
+                "read_count": last_msg_obj.read_by.count(),
+                "is_starred": last_msg_obj.starred_by.filter(id=current_user.id).exists()
+            }
+
+        results.append({
+            "id": room.id,
+            "name": room.name,
+            "is_group": room.is_group,
+            "unread_count": unread_count,       
+            "last_message": last_message_data,
+            "participants": [u.email for u in room.participants.all()] 
         })
 
     return results
 
-@router.get("/rooms", response_model=List[ChatRoomRead])
-def list_rooms(current_user: User = Depends(get_current_user)):
-    rooms = current_user.chat_rooms.all().order_by("-created_at")
-    return [format_room_response(r) for r in rooms]
-
 @router.get("/rooms/{room_id}/messages", response_model=List[MessageRead])
-def get_messages(room_id: int, q: Optional[str] = Query(None, description="Search within this room"), current_user: User = Depends(get_current_user)):
+def get_messages(
+    room_id: int, 
+    q: Optional[str] = Query(None, description="Search within this room"), 
+    current_user = Depends(get_current_user)
+):
     try:
         room = ChatRoom.objects.get(id=room_id)
         if current_user not in room.participants.all():
@@ -87,7 +142,7 @@ def get_messages(room_id: int, q: Optional[str] = Query(None, description="Searc
     except ChatRoom.DoesNotExist:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    msgs = room.messages.filter(is_deleted=False)
+    msgs = room.messages.filter(is_deleted=False).select_related('parent', 'parent__sender')
     
     if q:
         msgs = msgs.filter(content__icontains=q)
@@ -110,11 +165,92 @@ def get_messages(room_id: int, q: Optional[str] = Query(None, description="Searc
             "attachment_url": url,
             "timestamp": m.timestamp,
             "read_count": m.read_by.count(),
-            "is_starred": m.starred_by.filter(id=current_user.id).exists()
+            "is_starred": m.starred_by.filter(id=current_user.id).exists(),
+            "parent_id": m.parent.id if m.parent else None,
+            "parent_content": m.parent.content if m.parent else None,
+            "parent_sender": m.parent.sender.email if m.parent else None
         })
 
     return results
-# DELETE MESSAGE (Soft Delete)
+# EDIT MESSAGE
+@router.patch("/messages/{message_id}", response_model=MessageRead)
+async def edit_message(
+    message_id: int,
+    data: MessageUpdate,
+    current_user = Depends(get_current_user)
+):
+    try:
+        msg = await sync_to_async(ChatMessage.objects.get)(id=message_id)
+    except ChatMessage.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if msg.sender_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only edit your own messages")
+
+    msg.content = data.content
+    await sync_to_async(msg.save)()
+
+    socket_message = {
+        "type": "MESSAGE_UPDATE",
+        "id": msg.id,
+        "room_id": msg.room_id,
+        "content": msg.content,
+        "timestamp": str(msg.timestamp)
+    }
+    await manager.broadcast(socket_message, msg.room_id)
+
+    @sync_to_async
+    def get_response_data():
+        return {
+            "id": msg.id,
+            "sender_email": msg.sender.email,  
+            "content": msg.content,
+            "attachment_url": msg.attachment.url if msg.attachment else None,
+            "timestamp": msg.timestamp,
+            "read_count": msg.read_by.count(), 
+            "is_starred": msg.starred_by.filter(id=current_user.id).exists() 
+        }
+
+    return await get_response_data()
+
+# MARK MESSAGES AS READ
+@router.post("/rooms/{room_id}/read")
+async def mark_room_as_read(
+    room_id: int, 
+    current_user = Depends(get_current_user)
+):
+    """
+    Marks all messages in the room as 'Read' by the current user.
+    """
+    @sync_to_async
+    def process_read_receipts():
+        try:
+            room = ChatRoom.objects.get(id=room_id)
+            if current_user not in room.participants.all():
+                raise PermissionError("Not a participant")
+            
+            unread_msgs = room.messages.exclude(read_by=current_user)
+            count = unread_msgs.count()
+            
+            for msg in unread_msgs:
+                msg.read_by.add(current_user)
+                
+            return count
+            
+        except ChatRoom.DoesNotExist:
+            return None
+
+    try:
+        count = await process_read_receipts()
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    if count is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    return {"message": "Messages marked as read", "updated_count": count}
+
+# DELETE MESSAGE 
 @router.delete("/messages/{message_id}", status_code=204)
 def delete_message(message_id: int, current_user: User = Depends(get_current_user)):
     try:
@@ -132,11 +268,11 @@ def delete_message(message_id: int, current_user: User = Depends(get_current_use
 
 # CHAT TRASH (Recycle Bin)
 @router.get("/trash", response_model=List[MessageRead])
-def chat_trash(current_user: User = Depends(get_current_user)):
+def chat_trash(current_user = Depends(get_current_user)):
     msgs = ChatMessage.objects.filter(
         sender=current_user, 
         is_deleted=True
-    ).order_by("-timestamp")
+    ).select_related('parent', 'parent__sender').order_by("-timestamp")
 
     return [
         {
@@ -146,7 +282,10 @@ def chat_trash(current_user: User = Depends(get_current_user)):
             "attachment_url": m.attachment.url if m.attachment else None,
             "timestamp": m.timestamp,
             "read_count": m.read_by.count(),
-            "is_starred": m.starred_by.filter(id=current_user.id).exists()
+            "is_starred": m.starred_by.filter(id=current_user.id).exists(),
+            "parent_id": m.parent.id if m.parent else None,
+            "parent_content": m.parent.content if m.parent else None,
+            "parent_sender": m.parent.sender.email if m.parent else None
         }
         for m in msgs
     ]
@@ -272,6 +411,7 @@ from pydantic import BaseModel
 
 class TextMessageCreate(BaseModel):
     content: str
+    parent_id: Optional[int] = None
 
 @router.post("/rooms/{room_id}/message")
 async def send_text_message(
@@ -286,10 +426,18 @@ async def send_text_message(
             if current_user not in room.participants.all():
                 raise PermissionError("Not a participant")
             
+            parent_msg = None
+            if data.parent_id:
+                try:
+                    parent_msg = ChatMessage.objects.get(id=data.parent_id, room=room)
+                except ChatMessage.DoesNotExist:
+                    pass 
+
             msg = ChatMessage.objects.create(
                 room=room,
                 sender=current_user,
-                content=data.content
+                content=data.content,
+                parent=parent_msg
             )
             process_mentions(msg)
 
@@ -297,17 +445,25 @@ async def send_text_message(
                 if participant != current_user:
                     create_notification(
                         recipient=participant,
-                        message=f"New message from {current_user.email} in {room.name or 'Chat'}",
+                        message=f"New message from {current_user.email}",
                         type_choice="chat",
                         related_id=room.id
                     )
 
-            return msg
+            parent_info = None
+            if parent_msg:
+                parent_info = {
+                    "id": parent_msg.id,
+                    "content": parent_msg.content,
+                    "sender": parent_msg.sender.email
+                }
+
+            return msg, parent_info 
         except ChatRoom.DoesNotExist:
-            return None
+            return None, None
 
     try:
-        msg_obj = await save_text_message()
+        msg_obj, parent_info = await save_text_message()
     except PermissionError:
         raise HTTPException(status_code=403, detail="Not a participant")
         
@@ -318,7 +474,10 @@ async def send_text_message(
         "id": msg_obj.id,
         "sender": current_user.email,
         "content": msg_obj.content,
-        "timestamp": str(msg_obj.timestamp)
+        "timestamp": str(msg_obj.timestamp),
+        "parent_id": parent_info["id"] if parent_info else None,
+        "parent_content": parent_info["content"] if parent_info else None,
+        "parent_sender": parent_info["sender"] if parent_info else None
     }
     await manager.broadcast(socket_message, room_id)
 
@@ -330,30 +489,67 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
     await manager.connect(websocket, room_id, user_id)
     
     @sync_to_async
-    def save_message(room_id, user_id, content):
+    def save_message(room_id, user_id, content, parent_id=None):
+        """
+        Save message to DB and extract all necessary data safely.
+        """
         room = ChatRoom.objects.get(id=room_id)
         sender = User.objects.get(id=user_id)
-        msg = ChatMessage.objects.create(room=room, sender=sender, content=content)
+        
+        parent_msg = None
+        if parent_id:
+            try:
+                parent_msg = ChatMessage.objects.get(id=parent_id, room=room)
+            except ChatMessage.DoesNotExist:
+                pass
+
+        msg = ChatMessage.objects.create(
+            room=room, 
+            sender=sender, 
+            content=content,
+            parent=parent_msg 
+        )
         process_mentions(msg)
-        return msg, sender.email
+
+        parent_info = None
+        if parent_msg:
+            parent_info = {
+                "id": parent_msg.id,
+                "content": parent_msg.content,
+                "sender": parent_msg.sender.email
+            }
+
+        return msg, sender.email, parent_info
 
     try:
         while True:
-            data = await websocket.receive_text()
-            msg_obj, sender_email = await save_message(room_id, user_id, data)
+            text_data = await websocket.receive_text()
+            
+            try:
+                payload = json.loads(text_data)
+                content = payload.get("content")
+                parent_id = payload.get("parent_id")
+            except json.JSONDecodeError:
+                content = text_data
+                parent_id = None
+
+            msg_obj, sender_email, parent_info = await save_message(room_id, user_id, content, parent_id)
     
             response = {
                 "id": msg_obj.id,
                 "sender": sender_email,
-                "content": data,
-                "timestamp": str(msg_obj.timestamp)
+                "content": content,
+                "timestamp": str(msg_obj.timestamp),
+                "parent_id": parent_info["id"] if parent_info else None,
+                "parent_content": parent_info["content"] if parent_info else None,
+                "parent_sender": parent_info["sender"] if parent_info else None
             }
             await manager.broadcast(response, room_id)
             
     except WebSocketDisconnect:
-        manager.disconnect(websocket, room_id, user_id)
-        
-   # GROUP MANAGEMENT
+        manager.disconnect(websocket, room_id, user_id)  
+             
+# GROUP MANAGEMENT
 @router.post("/rooms/{room_id}/members")
 def add_members(
     room_id: int,

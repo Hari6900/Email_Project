@@ -10,6 +10,9 @@ class MessageRead(BaseModel):
     timestamp: datetime
     read_count: int = 0 
     is_starred: bool = False
+    parent_id: Optional[int] = None
+    parent_content: Optional[str] = None
+    parent_sender: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -18,6 +21,7 @@ class ChatRoomRead(BaseModel):
     id: int
     name: str | None
     is_group: bool
+    unread_count: int = 0
     participants: List[str] 
     last_message: Optional[MessageRead] = None
 
@@ -28,6 +32,10 @@ class ChatRoomCreate(BaseModel):
     participant_emails: List[str]
     name: str | None = None 
     is_group: bool = False
+    email_id: int | None = None
     
 class ChatMemberUpdate(BaseModel):
     user_emails: List[str]    
+    
+class MessageUpdate(BaseModel):
+    content: str    

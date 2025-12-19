@@ -55,9 +55,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
-from django.db import models
-from django.contrib.auth import get_user_model
-
 User = get_user_model()
 
 
@@ -119,7 +116,7 @@ class ChatRoom(models.Model):
 class ChatMessage(models.Model):
     room = models.ForeignKey(ChatRoom, related_name="messages", on_delete=models.CASCADE)
     sender = models.ForeignKey(User, related_name="sent_chat_messages", on_delete=models.CASCADE)
-    
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replies')
     content = models.TextField(blank=True, null=True) 
     attachment = models.FileField(upload_to='chat_attachments/', blank=True, null=True) 
     
