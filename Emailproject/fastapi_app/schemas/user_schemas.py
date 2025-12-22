@@ -26,7 +26,7 @@ class UserCreate(BaseModel):
     mobile_number: Optional[str]
     gender: str
     password: str
-    confirm_password: str
+    # confirm_password: str
 
     @field_validator('password')
     def validate_password_strength(cls, v):
@@ -60,11 +60,11 @@ class UserCreate(BaseModel):
 
         return v
 
-    @model_validator(mode="after")
-    def check_passwords_match(self):
-        if self.password != self.confirm_password:
-            raise ValueError("Password and confirm password do not match")
-        return self
+    # @model_validator(mode="after")
+    # def check_passwords_match(self):
+    #     if self.password != self.confirm_password:
+    #         raise ValueError("Password and confirm password do not match")
+    #     return self
 
 
 
