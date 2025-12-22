@@ -2,6 +2,11 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Optional
 
+class ReactionRead(BaseModel):
+    emoji: str
+    count: int
+    user_emails: List[str]
+
 class MessageRead(BaseModel):
     id: int
     sender_email: str
@@ -13,6 +18,8 @@ class MessageRead(BaseModel):
     parent_id: Optional[int] = None
     parent_content: Optional[str] = None
     parent_sender: Optional[str] = None
+    reactions: List[ReactionRead] = []
+    is_forwarded: bool = False
 
     class Config:
         from_attributes = True
@@ -39,3 +46,6 @@ class ChatMemberUpdate(BaseModel):
     
 class MessageUpdate(BaseModel):
     content: str    
+    
+class ForwardRequest(BaseModel):
+    target_room_id: int    

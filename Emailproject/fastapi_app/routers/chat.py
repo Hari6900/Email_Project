@@ -1,4 +1,5 @@
 from django.db.models import Q
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile, Query
 import json
 import re
@@ -8,8 +9,8 @@ from typing import List, Optional
 from django.contrib.auth import get_user_model
 from asgiref.sync import sync_to_async
 from fastapi_app.routers.notifications import create_notification
-from django_backend.models import ChatRoom, ChatMessage, Email
-from fastapi_app.schemas.chat_schemas import ChatRoomCreate, ChatRoomRead, MessageRead, ChatMemberUpdate, MessageUpdate
+from django_backend.models import ChatRoom, ChatMessage, Email, MessageReaction
+from fastapi_app.schemas.chat_schemas import ChatRoomCreate, ChatRoomRead, MessageRead, ChatMemberUpdate, MessageUpdate, ForwardRequest
 from fastapi_app.core.socket_manager import manager
 from fastapi_app.dependencies.auth import get_current_user
 
@@ -59,7 +60,7 @@ def search_messages(
     current_user = Depends(get_current_user)
 ):
     """
-    Search for messages across ALL rooms the user belongs to.
+    Search for messages across ALL rooms. Includes Parent info and Reactions.
     """
     user_room_ids = current_user.chat_rooms.values_list('id', flat=True)
     
@@ -67,7 +68,7 @@ def search_messages(
         room__id__in=user_room_ids,   
         is_deleted=False,             
         content__icontains=q         
-    ).select_related('parent', 'parent__sender').order_by("-timestamp") # Optimized query
+    ).select_related('parent', 'parent__sender').prefetch_related('reactions', 'reactions__user').order_by("-timestamp")
     
     results = []
     for m in msgs:
@@ -77,6 +78,18 @@ def search_messages(
                 url = m.attachment.url
             except ValueError:
                 url = None  
+
+        reaction_map = {}
+        for r in m.reactions.all():
+            if r.emoji not in reaction_map:
+                reaction_map[r.emoji] = {"count": 0, "emails": []}
+            reaction_map[r.emoji]["count"] += 1
+            reaction_map[r.emoji]["emails"].append(r.user.email)
+
+        reactions_list = [
+            {"emoji": k, "count": v["count"], "user_emails": v["emails"]}
+            for k, v in reaction_map.items()
+        ]
 
         results.append({
             "id": m.id,
@@ -88,7 +101,9 @@ def search_messages(
             "is_starred": m.starred_by.filter(id=current_user.id).exists(),
             "parent_id": m.parent.id if m.parent else None,
             "parent_content": m.parent.content if m.parent else None,
-            "parent_sender": m.parent.sender.email if m.parent else None
+            "parent_sender": m.parent.sender.email if m.parent else None,
+            "reactions": reactions_list,
+            "is_forwarded": m.is_forwarded
         })
 
     return results
@@ -142,7 +157,7 @@ def get_messages(
     except ChatRoom.DoesNotExist:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    msgs = room.messages.filter(is_deleted=False).select_related('parent', 'parent__sender')
+    msgs = room.messages.filter(is_deleted=False).select_related('parent', 'parent__sender').prefetch_related('reactions', 'reactions__user')
     
     if q:
         msgs = msgs.filter(content__icontains=q)
@@ -158,6 +173,18 @@ def get_messages(
             except ValueError:
                 url = None  
 
+        reaction_map = {}
+        for r in m.reactions.all():
+            if r.emoji not in reaction_map:
+                reaction_map[r.emoji] = {"count": 0, "emails": []}
+            reaction_map[r.emoji]["count"] += 1
+            reaction_map[r.emoji]["emails"].append(r.user.email)
+
+        reactions_list = [
+            {"emoji": k, "count": v["count"], "user_emails": v["emails"]}
+            for k, v in reaction_map.items()
+        ]
+
         results.append({
             "id": m.id,
             "sender_email": m.sender.email,
@@ -166,9 +193,12 @@ def get_messages(
             "timestamp": m.timestamp,
             "read_count": m.read_by.count(),
             "is_starred": m.starred_by.filter(id=current_user.id).exists(),
+            
             "parent_id": m.parent.id if m.parent else None,
             "parent_content": m.parent.content if m.parent else None,
-            "parent_sender": m.parent.sender.email if m.parent else None
+            "parent_sender": m.parent.sender.email if m.parent else None,
+            "reactions": reactions_list,
+            "is_forwarded": m.is_forwarded    
         })
 
     return results
@@ -272,10 +302,23 @@ def chat_trash(current_user = Depends(get_current_user)):
     msgs = ChatMessage.objects.filter(
         sender=current_user, 
         is_deleted=True
-    ).select_related('parent', 'parent__sender').order_by("-timestamp")
+    ).select_related('parent', 'parent__sender').prefetch_related('reactions', 'reactions__user').order_by("-timestamp")
 
-    return [
-        {
+    results = []
+    for m in msgs:
+        reaction_map = {}
+        for r in m.reactions.all():
+            if r.emoji not in reaction_map:
+                reaction_map[r.emoji] = {"count": 0, "emails": []}
+            reaction_map[r.emoji]["count"] += 1
+            reaction_map[r.emoji]["emails"].append(r.user.email)
+        
+        reactions_list = [
+            {"emoji": k, "count": v["count"], "user_emails": v["emails"]}
+            for k, v in reaction_map.items()
+        ]
+
+        results.append({
             "id": m.id,
             "sender_email": m.sender.email,
             "content": m.content,
@@ -285,10 +328,11 @@ def chat_trash(current_user = Depends(get_current_user)):
             "is_starred": m.starred_by.filter(id=current_user.id).exists(),
             "parent_id": m.parent.id if m.parent else None,
             "parent_content": m.parent.content if m.parent else None,
-            "parent_sender": m.parent.sender.email if m.parent else None
-        }
-        for m in msgs
-    ]
+            "parent_sender": m.parent.sender.email if m.parent else None,
+            "reactions": reactions_list,
+            "is_forwarded": m.is_forwarded
+        })
+    return results
 
 # STAR MESSAGE (Toggle)
 @router.post("/messages/{message_id}/star")
@@ -406,12 +450,124 @@ async def upload_chat_attachment(
 
     return {"message": "File uploaded", "url": msg_obj.attachment.url}
 
-# SEND TEXT MESSAGE (REST API - For Testing)
-from pydantic import BaseModel
-
+# SEND TEXT MESSAGE 
 class TextMessageCreate(BaseModel):
     content: str
     parent_id: Optional[int] = None
+
+@router.post("/messages/{message_id}/react")
+async def toggle_reaction(
+    message_id: int, 
+    emoji: str = Query(..., min_length=1, description="The emoji character"),
+    current_user: User = Depends(get_current_user)
+):
+
+    @sync_to_async
+    def toggle_db_reaction():
+        try:
+            msg = ChatMessage.objects.get(id=message_id)
+        except ChatMessage.DoesNotExist:
+            return None, None
+
+        existing = MessageReaction.objects.filter(message=msg, user=current_user, emoji=emoji).first()
+        
+        if existing:
+            existing.delete()
+            action = "removed"
+        else:
+            MessageReaction.objects.create(message=msg, user=current_user, emoji=emoji) # Add
+            action = "added"
+            
+            if msg.sender != current_user:
+                create_notification(
+                    recipient=msg.sender,
+                    message=f"{current_user.email} reacted {emoji} to your message",
+                    type_choice="chat",
+                    related_id=msg.room.id
+                )
+        
+        return msg, action
+
+    msg_obj, action = await toggle_db_reaction()
+    
+    if not msg_obj:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    socket_message = {
+        "type": "REACTION_UPDATE",
+        "message_id": msg_obj.id,
+        "emoji": emoji,
+        "action": action, 
+        "user_email": current_user.email
+    }
+    await manager.broadcast(socket_message, msg_obj.room.id)
+
+    return {"message": f"Reaction {action}", "emoji": emoji}
+
+@router.post("/messages/{message_id}/forward")
+async def forward_message(
+    message_id: int,
+    request: ForwardRequest,
+    current_user: User = Depends(get_current_user)
+):
+    from django_backend.models import ChatMessage, ChatRoom 
+
+    @sync_to_async
+    def process_forward():
+        try:
+            original_msg = ChatMessage.objects.get(id=message_id)
+            
+            target_room = ChatRoom.objects.get(id=request.target_room_id)
+            
+            if current_user not in target_room.participants.all():
+                raise PermissionError("You are not a member of the target room")
+
+            new_msg = ChatMessage.objects.create(
+                room=target_room,
+                sender=current_user,
+                content=original_msg.content, 
+                attachment=original_msg.attachment, 
+                is_forwarded=True
+            )
+            
+            for participant in target_room.participants.all():
+                if participant != current_user:
+                    create_notification(
+                        recipient=participant,
+                        message=f"Forwarded message from {current_user.email}",
+                        type_choice="chat",
+                        related_id=target_room.id
+                    )
+
+            return new_msg, target_room.id
+
+        except ChatMessage.DoesNotExist:
+            return None, None
+        except ChatRoom.DoesNotExist:
+            return "Room not found", None
+
+    try:
+        new_msg_obj, target_room_id = await process_forward()
+    except PermissionError:
+         raise HTTPException(status_code=403, detail="You are not a member of the target room")
+         
+    if new_msg_obj == "Room not found":
+        raise HTTPException(status_code=404, detail="Target room not found")
+    if not new_msg_obj:
+        raise HTTPException(status_code=404, detail="Original message not found")
+
+    socket_message = {
+        "id": new_msg_obj.id,
+        "sender": current_user.email,
+        "content": new_msg_obj.content,
+        "attachment_url": new_msg_obj.attachment.url if new_msg_obj.attachment else None,
+        "timestamp": str(new_msg_obj.timestamp),
+        "parent_id": None, 
+        "is_forwarded": True 
+    }
+    await manager.broadcast(socket_message, target_room_id)
+
+    return {"message": "Message forwarded", "new_message_id": new_msg_obj.id}
 
 @router.post("/rooms/{room_id}/message")
 async def send_text_message(

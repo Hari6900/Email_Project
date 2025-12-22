@@ -125,6 +125,7 @@ class ChatMessage(models.Model):
     read_by = models.ManyToManyField(User, related_name="read_messages", blank=True)
     starred_by = models.ManyToManyField(User, related_name="starred_chat_messages", blank=True)
     is_deleted = models.BooleanField(default=False)
+    is_forwarded = models.BooleanField(default=False)
     mentions = models.ManyToManyField(User, related_name="mentioned_in_messages", blank=True)
     def __str__(self):
         return f"{self.sender.email}: {self.content[:20]}"
@@ -311,7 +312,19 @@ class TaskActivity(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.actor.email} - {self.action_type}"   
+        return f"{self.actor.email} - {self.action_type}"  
+    
+class MessageReaction(models.Model):
+    message = models.ForeignKey(ChatMessage, related_name="reactions", on_delete=models.CASCADE)
+    user = models.ForeignKey(User, related_name="message_reactions", on_delete=models.CASCADE)
+    emoji = models.CharField(max_length=10) 
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('message', 'user', 'emoji') 
+        
+    def __str__(self):
+        return f"{self.user.email} reacted {self.emoji} to {self.message.id}"     
     
    
 
