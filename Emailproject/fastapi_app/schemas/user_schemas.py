@@ -1,7 +1,7 @@
 import re
 import requests
 import hashlib
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
@@ -64,8 +64,6 @@ class UserCreate(BaseModel):
             raise ValueError("Password and confirm password do not match")
         return self
 
-
-
 class UserRead(BaseModel):
     id: int
     email: EmailStr
@@ -75,6 +73,7 @@ class UserRead(BaseModel):
     nationality: Optional[str] = None   
     role: Optional[str] = None           
     is_active: bool
+    last_seen: Optional[datetime] = None
 
     class Config:
         from_attributes = True

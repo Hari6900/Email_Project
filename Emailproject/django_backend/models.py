@@ -43,7 +43,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     mobile_number = models.CharField(max_length=15, blank=True, null=True)
     date_joined = models.DateTimeField(default=timezone.now)
-    
+    last_seen = models.DateTimeField(null=True, blank=True)
     
 
     objects = CustomUserManager()

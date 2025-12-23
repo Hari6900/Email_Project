@@ -1,6 +1,10 @@
 from fastapi import WebSocket
 from typing import List, Dict
+from django.utils import timezone
+from asgiref.sync import sync_to_async
+from django.contrib.auth import get_user_model
 
+User = get_user_model()
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[int, List[WebSocket]] = {}
@@ -27,14 +31,27 @@ class ConnectionManager:
                 
         if user_id in self.user_connection_counts:
             self.user_connection_counts[user_id] -= 1
+            
             if self.user_connection_counts[user_id] <= 0:
                 del self.user_connection_counts[user_id]
-        
+                
+                await self.update_last_seen(user_id)
+
         await self.broadcast({
             "type": "USER_STATUS",
             "user_id": user_id,
             "status": "offline"
         }, room_id)
+
+    @sync_to_async
+    def update_last_seen(self, user_id: int):
+        try:
+            user = User.objects.get(id=user_id)
+            user.last_seen = timezone.now()
+            user.save()
+            print(f"🕒 Updated Last Seen for {user.email}")
+        except User.DoesNotExist:
+            pass
 
     async def broadcast(self, message: dict, room_id: int):
         """Send a message to everyone in the room"""
