@@ -144,6 +144,11 @@ def list_rooms(current_user = Depends(get_current_user)):
 
     return results
 
+# GET ONLINE USERS 
+@router.get("/online", response_model=List[int])
+def get_online_users(current_user = Depends(get_current_user)):
+    return manager.get_online_users()
+
 @router.get("/rooms/{room_id}/messages", response_model=List[MessageRead])
 def get_messages(
     room_id: int, 
@@ -683,27 +688,40 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
             
             try:
                 payload = json.loads(text_data)
-                content = payload.get("content")
-                parent_id = payload.get("parent_id")
             except json.JSONDecodeError:
-                content = text_data
-                parent_id = None
+                payload = {"content": text_data}
+
+            if payload.get("type") == "typing":
+                await manager.broadcast({
+                    "type": "typing",
+                    "user_id": user_id,
+                    "room_id": room_id
+                }, room_id)
+                continue 
+
+            content = payload.get("content")
+            parent_id = payload.get("parent_id")
+            
+            if not content:
+                continue
 
             msg_obj, sender_email, parent_info = await save_message(room_id, user_id, content, parent_id)
     
             response = {
+                "type": "new_message", 
                 "id": msg_obj.id,
                 "sender": sender_email,
                 "content": content,
                 "timestamp": str(msg_obj.timestamp),
                 "parent_id": parent_info["id"] if parent_info else None,
                 "parent_content": parent_info["content"] if parent_info else None,
-                "parent_sender": parent_info["sender"] if parent_info else None
+                "parent_sender": parent_info["sender"] if parent_info else None,
+                "is_forwarded": False 
             }
             await manager.broadcast(response, room_id)
             
     except WebSocketDisconnect:
-        manager.disconnect(websocket, room_id, user_id)  
+        await manager.disconnect(websocket, room_id, user_id) 
              
 # GROUP MANAGEMENT
 @router.post("/rooms/{room_id}/members")
