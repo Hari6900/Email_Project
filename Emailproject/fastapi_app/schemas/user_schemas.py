@@ -18,8 +18,6 @@ class Token(BaseModel):
 
 class UserCreate(BaseModel):
     email: EmailStr
-    recovery_email: Optional[EmailStr] = None
-    surname: Optional[str] = None
     first_name: str
     last_name: str
     dob: Optional[date]
@@ -100,3 +98,6 @@ class ResetPasswordRequest(BaseModel):
     @field_validator('new_password')
     def validate_password_strength(cls, v):
         return UserCreate.validate_password_strength(v)
+
+class ForgotUsernameRequest(BaseModel):
+    phone_number: str
