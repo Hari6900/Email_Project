@@ -9,7 +9,7 @@ from ..core.security import (
     create_password_reset_token, decode_access_token
 )
 from ..core.config import settings
-from ..schemas.user_schemas import Token, ForgotPasswordRequest, ResetPasswordRequest
+from ..schemas.user_schemas import Token, ForgotPasswordRequest, ResetPasswordRequest, ForgotUsernameRequest
 
 from django.contrib.auth import get_user_model
 User = get_user_model()
@@ -113,11 +113,11 @@ def login_for_access_token(
     
     # 4. Generate Token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+
     access_token = create_access_token (
         data={"sub": user.email},
         expires_delta=access_token_expires,
     )
-    
     return {"access_token": access_token, "token_type": "bearer"}
 # FORGOT PASSWORD
 @router.post("/forgot-password", status_code=200)
@@ -161,3 +161,28 @@ def reset_password(data: ResetPasswordRequest):
 
     return {"message": "Password reset successfully. You can now login with your new password."}
 
+
+@router.post("/forgot-username", status_code=200)
+def forgot_username(data: ForgotUsernameRequest):
+    user = User.objects.filter(phone_number=data.phone_number).first()
+
+    if not user:
+        return {
+            "message": "If this phone number exists, username details have been sent."
+        }
+
+    # Mask email for security
+    email = user.email
+    masked_email = email[0:2] + "****@" + email.split("@")[1]
+
+    # Simulate sending email / SMS
+    print("\n==========================================")
+    print(f" FORGOT USERNAME REQUEST")
+    print(f" PHONE: {data.phone_number}")
+    print(f" USERNAME (EMAIL): {masked_email}")
+    print("==========================================\n")
+
+    return {
+        "message": "If this phone number exists, username details have been sent.",
+        "username_hint": masked_email
+    }
