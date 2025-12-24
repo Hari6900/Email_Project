@@ -65,6 +65,18 @@ class ConnectionManager:
     def get_online_users(self) -> List[int]:
         """Returns a list of User IDs that are currently connected."""
         return list(self.user_connection_counts.keys())
+    
+    async def broadcast_to_all(self, message: dict):
+        """
+        Send a message to EVERY connected user in ALL rooms.
+        Used for Status Updates (Online/Offline/In Meeting).
+        """
+        for room_id in self.active_connections:
+            for connection in self.active_connections[room_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    pass
 
 manager = ConnectionManager()
 

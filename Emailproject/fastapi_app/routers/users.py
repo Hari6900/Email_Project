@@ -1,11 +1,12 @@
+from fastapi_app.core.status_manager import StatusManager
 from typing import List
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Body
 from django.contrib.auth import get_user_model
 from ..schemas.user_schemas import UserCreate, UserRead, UserUpdate
-from ..dependencies.permissions import get_current_active_user, is_admin
-from ..dependencies.permissions import get_current_active_user
+from ..dependencies.permissions import get_current_active_user, is_admin, get_current_user
 from ..core.security import get_password_hash
 
+User = get_user_model()
 router = APIRouter()
 
 @router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -13,7 +14,6 @@ def create_user(user_in: UserCreate):
     """
     Create a new user.
     """
-    User = get_user_model()
     if not user_in.email.lower().endswith("@stackly.com"):
         raise HTTPException(
             status_code=400,
@@ -53,7 +53,7 @@ def read_users_me(current_user = Depends(get_current_active_user)):
 def read_all_users(
     skip: int = 0, 
     limit: int = 100, 
-    current_user = Depends(is_admin) # <--- The Bouncer! Only Admins allowed.
+    current_user = Depends(is_admin) 
 ):
     """
     Fetch ALL users. 
@@ -66,7 +66,7 @@ def read_all_users(
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(
     user_id: int, 
-    current_user = Depends(is_admin) # <--- Bouncer: Admins only!
+    current_user = Depends(is_admin) 
 ):
     """
     Delete a user by ID. 
@@ -81,7 +81,7 @@ def delete_user(
     
     return None
 
-# 🟡 UPDATE MY PROFILE (Any Logged In User)
+#  UPDATE MY PROFILE 
 @router.patch("/me", response_model=UserRead)
 def update_user_me(
     user_update: UserUpdate, 
@@ -96,3 +96,19 @@ def update_user_me(
     
     current_user.save()
     return current_user
+
+@router.put("/status")
+async def update_my_status(
+    status: str = Body(..., embed=True), 
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Manually update status (e.g., to 'DND', 'AVAILABLE', 'AWAY').
+    """
+    valid_statuses = ["AVAILABLE", "DND", "BRB", "AWAY", "OFFLINE"]
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    await StatusManager.request_status_change(current_user.id, status, is_manual=True)
+
+    return {"message": f"Status updated to {status}"}

@@ -74,6 +74,7 @@ class UserRead(BaseModel):
     role: Optional[str] = None           
     is_active: bool
     last_seen: Optional[datetime] = None
+    current_status: Optional[str] = "OFFLINE"
 
     class Config:
         from_attributes = True
