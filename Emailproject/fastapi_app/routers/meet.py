@@ -1,3 +1,5 @@
+from asgiref.sync import sync_to_async
+from fastapi_app.core.status_manager import StatusManager
 from fastapi import APIRouter, Depends, Body, HTTPException
 from django.contrib.auth import get_user_model
 import secrets 
@@ -77,3 +79,41 @@ def list_my_meetings(current_user: User = Depends(get_current_user)):
     meetings = Meeting.objects.filter(host=current_user).order_by("-created_at")
 
     return meetings
+
+@router.post("/{meeting_id}/join")
+async def join_meeting(
+    meeting_id: int, 
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Get the meeting details
+    try:
+        meeting = await sync_to_async(Meeting.objects.get)(id=meeting_id)
+    except Meeting.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    meet_link = f"https://meet.jit.si/Stackly-Meeting-{meeting.meeting_code}"
+
+    await StatusManager.request_status_change(
+        current_user.id, 
+        "IN_MEETING", 
+        message=f"In a Meeting: {meeting.title}"  
+    )
+
+    return {
+        "message": "Status updated to IN_MEETING", 
+        "link": meet_link
+    }
+
+@router.post("/{meeting_id}/leave")
+async def leave_meeting(
+    meeting_id: int, 
+    current_user: User = Depends(get_current_user)
+):
+    """
+    User clicks 'Hang Up' or closes the tab.
+    We immediately revert them to AVAILABLE.
+    """
+    
+    await StatusManager.request_status_change(current_user.id, 'AVAILABLE')
+
+    return {"message": "You are now marked as AVAILABLE"}

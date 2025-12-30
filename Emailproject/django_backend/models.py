@@ -52,9 +52,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     mobile_number = models.CharField(max_length=15, blank=True, null=True)
     date_joined = models.DateTimeField(default=timezone.now)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    STATUS_CHOICES = (
+        ('AVAILABLE', 'Available'),
+        ('IN_MEETING', 'In Meeting'),
+        ('DND', 'Do Not Disturb'),
+        ('BRB', 'Be Right Back'),
+        ('AWAY', 'Appear Away'),
+        ('OFFLINE', 'Offline'),
+    )
+    current_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OFFLINE')
+    is_manually_set = models.BooleanField(default=False)
+    status_expiry = models.DateTimeField(null=True, blank=True)
+    status_message = models.CharField(max_length=255, blank=True, null=True) 
+    last_active_at = models.DateTimeField(null=True, blank=True)
     
-    
-
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
@@ -62,9 +74,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
-
-from django.db import models
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -127,7 +136,7 @@ class ChatRoom(models.Model):
 class ChatMessage(models.Model):
     room = models.ForeignKey(ChatRoom, related_name="messages", on_delete=models.CASCADE)
     sender = models.ForeignKey(User, related_name="sent_chat_messages", on_delete=models.CASCADE)
-    
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replies')
     content = models.TextField(blank=True, null=True) 
     attachment = models.FileField(upload_to='chat_attachments/', blank=True, null=True) 
     
@@ -136,6 +145,7 @@ class ChatMessage(models.Model):
     read_by = models.ManyToManyField(User, related_name="read_messages", blank=True)
     starred_by = models.ManyToManyField(User, related_name="starred_chat_messages", blank=True)
     is_deleted = models.BooleanField(default=False)
+    is_forwarded = models.BooleanField(default=False)
     mentions = models.ManyToManyField(User, related_name="mentioned_in_messages", blank=True)
     def __str__(self):
         return f"{self.sender.email}: {self.content[:20]}"
@@ -322,7 +332,19 @@ class TaskActivity(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.actor.email} - {self.action_type}"   
+        return f"{self.actor.email} - {self.action_type}"  
+    
+class MessageReaction(models.Model):
+    message = models.ForeignKey(ChatMessage, related_name="reactions", on_delete=models.CASCADE)
+    user = models.ForeignKey(User, related_name="message_reactions", on_delete=models.CASCADE)
+    emoji = models.CharField(max_length=10) 
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('message', 'user', 'emoji') 
+        
+    def __str__(self):
+        return f"{self.user.email} reacted {self.emoji} to {self.message.id}"     
     
 class DriveFile(models.Model):
     owner = models.ForeignKey(
