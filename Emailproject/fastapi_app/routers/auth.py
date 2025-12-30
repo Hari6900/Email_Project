@@ -9,7 +9,10 @@ from ..core.security import (
     create_password_reset_token, decode_access_token
 )
 from ..core.config import settings
-from ..schemas.user_schemas import Token, ForgotPasswordRequest, ResetPasswordRequest, ForgotUsernameRequest
+from ..schemas.user_schemas import Token, ForgotPasswordRequest, ResetPasswordWithOTP, ForgotUsernameRequest
+
+from fastapi_app.utils.otp import generate_otp, otp_expiry
+from fastapi_app.utils.sms import send_sms
 
 from django.contrib.auth import get_user_model
 User = get_user_model()
@@ -120,46 +123,45 @@ def login_for_access_token(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 # FORGOT PASSWORD
-@router.post("/forgot-password", status_code=200)
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
 def forgot_password(data: ForgotPasswordRequest):
-    user = User.objects.filter(email=data.email).first()
+    user = User.objects.filter(mobile_number=data.mobile_number).first()
 
     if not user:
-        return {"message": "If this email exists, a reset link has been sent."}
+        # security-safe response
+        return {"message": "If this mobile number exists, an OTP has been sent"}
 
-    reset_token = create_password_reset_token(user.email)
+    otp = generate_otp()
 
-    print("\n==========================================")
-    print(f" PASSWORD RESET EMAIL FOR: {user.email}")
-    print(f" LINK: {reset_token}")
-    print("==========================================\n")
+    user.otp = otp
+    user.otp_expires_at = otp_expiry()
+    user.save(update_fields=["otp", "otp_expires_at"])
 
-    return {"message": "If this email exists, a reset link has been sent."}
+    send_sms(
+        user.mobile_number,
+        f"Your password reset OTP is {otp}. It is valid for 5 minutes."
+    )
+
+    return {"message": "OTP sent to registered mobile number"}
 
 # RESET PASSWORD
-@router.post("/reset-password", status_code=200)
-def reset_password(data: ResetPasswordRequest):
-    payload = decode_access_token(data.token)
-    
-    if not payload:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
-    
-    if payload.get("type") != "reset":
-        raise HTTPException(status_code=400, detail="Invalid token type")
+@router.post("/reset-password")
+def reset_password(data: ResetPasswordWithOTP):
+    user = User.objects.filter(mobile_number=data.mobile_number).first()
 
-    email = payload.get("sub")
-    if not email:
-        raise HTTPException(status_code=400, detail="Invalid token payload")
+    if not user or user.otp != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    try:
-        user = User.objects.get(email=email)
-    except User.DoesNotExist:
-        raise HTTPException(status_code=404, detail="User not found")
+    if user.otp_expires_at < now():
+        raise HTTPException(status_code=400, detail="OTP expired")
 
     user.set_password(data.new_password)
+    user.otp = None
+    user.otp_expires_at = None
     user.save()
 
-    return {"message": "Password reset successfully. You can now login with your new password."}
+    return {"message": "Password reset successful"}
+
 
 
 @router.post("/forgot-username", status_code=200)

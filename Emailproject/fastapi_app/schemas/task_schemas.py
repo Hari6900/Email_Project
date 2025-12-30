@@ -1,6 +1,8 @@
+from __future__ import annotations
 from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import Optional, List
+
 
 class UserTiny(BaseModel):
     id: int
@@ -42,7 +44,8 @@ class TaskRead(BaseModel):
     created_at: datetime
     
     tags: List[TagRead] = []
-    project: ProjectRead | None = None
+    project: Optional["ProjectRead"] = None
+
     
     created_by: UserTiny
     assigned_to: UserTiny | None = None

@@ -1,4 +1,7 @@
 from django.db.models import Q
+from jose import JWTError, jwt
+from fastapi import status
+from fastapi_app.core.config import settings
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile, Query
 import json
@@ -17,6 +20,26 @@ from fastapi_app.dependencies.auth import get_current_user
 router = APIRouter()
 User = get_user_model()
 
+async def get_current_user_ws(token: str = Query(...)):
+    """
+    Validates the token passed in the WebSocket URL.
+    """
+    credentials_exception = status.WS_1008_POLICY_VIOLATION
+    
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise WebSocketDisconnect(code=credentials_exception)
+    except JWTError:
+        raise WebSocketDisconnect(code=credentials_exception)
+    
+    try:
+        user = await sync_to_async(User.objects.get)(email=email)
+        return user
+    except User.DoesNotExist:
+        raise WebSocketDisconnect(code=credentials_exception)
+    
 # REST API (The Paperwork)
 @router.post("/rooms", response_model=ChatRoomRead)
 def create_room(data: ChatRoomCreate, current_user = Depends(get_current_user)):
@@ -858,3 +881,23 @@ def get_my_mentions(current_user: User = Depends(get_current_user)):
             "is_starred": m.starred_by.filter(id=current_user.id).exists()
         })
     return results            
+
+@router.websocket("/ws/{user_id}")
+async def status_websocket(
+    websocket: WebSocket, 
+    user_id: int, 
+    current_user: User = Depends(get_current_user_ws) 
+):
+    
+    if current_user.id != user_id:
+        print(f"Security Alert: User {current_user.id} tried to listen to User {user_id}")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await manager.connect(websocket, user_id, user_id)
+    
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+       await manager.disconnect(websocket, user_id, user_id)
