@@ -1,3 +1,6 @@
+from datetime import timedelta
+from django.utils import timezone
+from fastapi_app.tasks import reset_user_status
 from fastapi_app.core.status_manager import StatusManager
 from typing import List
 from fastapi import APIRouter, HTTPException, status, Depends, Body
@@ -5,6 +8,7 @@ from django.contrib.auth import get_user_model
 from ..schemas.user_schemas import UserCreate, UserRead, UserUpdate
 from ..dependencies.permissions import get_current_active_user, is_admin, get_current_user
 from ..core.security import get_password_hash
+from asgiref.sync import sync_to_async
 
 User = get_user_model()
 router = APIRouter()
@@ -99,16 +103,37 @@ def update_user_me(
 
 @router.put("/status")
 async def update_my_status(
-    status: str = Body(..., embed=True), 
+    status: str = Body(...), 
+    message: str = Body(None),
+    duration: int = Body(None),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Manually update status (e.g., to 'DND', 'AVAILABLE', 'AWAY').
-    """
     valid_statuses = ["AVAILABLE", "DND", "BRB", "AWAY", "OFFLINE"]
     if status not in valid_statuses:
         raise HTTPException(status_code=400, detail="Invalid status")
 
-    await StatusManager.request_status_change(current_user.id, status, is_manual=True)
+    await StatusManager.request_status_change(
+        current_user.id, 
+        status, 
+        message=message, 
+        is_manual=True
+    )
+
+    if duration and duration > 0:
+        expiry_time = timezone.now() + timedelta(minutes=duration)
+        
+        current_user.current_status = status
+        current_user.status_message = message
+        current_user.is_manually_set = True
+        current_user.status_expiry = expiry_time
+        
+        await sync_to_async(current_user.save)()
+
+        reset_user_status.apply_async(args=[current_user.id], countdown=duration * 60)
+        
+        return {
+            "message": f"Status set to {status}. Will reset in {duration} minutes.",
+            "expires_at": expiry_time
+        }
 
     return {"message": f"Status updated to {status}"}

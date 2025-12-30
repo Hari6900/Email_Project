@@ -1,10 +1,15 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from .django_setup import setup_django
 setup_django()
-from fastapi_app.routers import auth, users, email, chat, analytics,  meet, calendar, notes, notifications, task, profile
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_app.core.socket_manager import manager
+import asyncio
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from fastapi_app.routers import (
+    auth, users, email, chat, analytics, 
+    meet, calendar, notes, notifications, task, profile
+)
 
 app = FastAPI()
 
@@ -17,7 +22,6 @@ app.add_middleware(
 )
 BASE_DIR = Path(__file__).resolve().parent.parent
 MEDIA_ROOT = BASE_DIR / "media" 
-
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
 app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
@@ -34,7 +38,15 @@ app.include_router(notifications.router, prefix="/notifications", tags=["Notific
 app.include_router(notes.router, prefix="/notes", tags=["Notes"])
 app.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
 
-
+@app.on_event("startup")
+async def startup_event():
+    app.state.redis_listener = asyncio.create_task(manager.start_redis_listener())
+    
 @app.get("/")
 def read_root():
     return {"message": "Django and FastAPI are linked!"}
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if hasattr(app.state, "redis_listener"):
+        app.state.redis_listener.cancel()

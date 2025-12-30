@@ -85,27 +85,23 @@ async def join_meeting(
     meeting_id: int, 
     current_user: User = Depends(get_current_user)
 ):
-    """
-    User clicks 'Join'. 
-    1. We update their status to IN_MEETING (if allowed).
-    2. We return the actual Jitsi Meeting Link.
-    """
-
+    # 1. Get the meeting details
     try:
         meeting = await sync_to_async(Meeting.objects.get)(id=meeting_id)
     except Meeting.DoesNotExist:
         raise HTTPException(status_code=404, detail="Meeting not found")
 
-    await StatusManager.request_status_change(current_user.id, 'IN_MEETING')
+    meet_link = f"https://meet.jit.si/Stackly-Meeting-{meeting.meeting_code}"
 
-    join_url = f"https://meet.jit.si/Stackly-Meeting-{meeting.meeting_code}"
-    
-    if meeting.call_type == 'audio':
-        join_url += "#config.startWithVideoMuted=true"
+    await StatusManager.request_status_change(
+        current_user.id, 
+        "IN_MEETING", 
+        message=f"In a Meeting: {meeting.title}"  
+    )
 
     return {
         "message": "Status updated to IN_MEETING", 
-        "link": join_url
+        "link": meet_link
     }
 
 @router.post("/{meeting_id}/leave")
