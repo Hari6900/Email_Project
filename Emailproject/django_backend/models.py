@@ -43,9 +43,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     mobile_number = models.CharField(max_length=15, blank=True, null=True)
     date_joined = models.DateTimeField(default=timezone.now)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    STATUS_CHOICES = (
+        ('AVAILABLE', 'Available'),
+        ('IN_MEETING', 'In Meeting'),
+        ('DND', 'Do Not Disturb'),
+        ('BRB', 'Be Right Back'),
+        ('AWAY', 'Appear Away'),
+        ('OFFLINE', 'Offline'),
+    )
+    current_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OFFLINE')
+    is_manually_set = models.BooleanField(default=False)
+    status_expiry = models.DateTimeField(null=True, blank=True)
+    status_message = models.CharField(max_length=255, blank=True, null=True) 
+    last_active_at = models.DateTimeField(null=True, blank=True)
     
-    
-
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'

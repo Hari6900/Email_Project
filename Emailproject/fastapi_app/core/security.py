@@ -8,14 +8,10 @@ RESET_TOKEN_EXPIRE_MINUTES = 15
 def get_password_hash(password: str):
     return make_password(password)
 
-# --------------------------
 def verify_password(plain_password: str, hashed_password: str):
     return check_password(plain_password, hashed_password)
 
-
-# --------------------------
 # CREATE ACCESS TOKEN
-# --------------------------
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
 
