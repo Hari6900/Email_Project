@@ -7,6 +7,8 @@ from fastapi_app.routers import auth, users, email, chat, analytics, meet, notif
 
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from fastapi_app.routers import drive
+
 
 
 
@@ -27,6 +29,13 @@ app.include_router(meet.router, prefix="/meet", tags=["Meetings"])
 app.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(notes.router)
 app.include_router(calendar.router)
+app.include_router(drive.router)
+
+
+from fastapi.staticfiles import StaticFiles
+
+app.mount("/media", StaticFiles(directory="media"), name="media")
+
 
 
 @app.get("/")

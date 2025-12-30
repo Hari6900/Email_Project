@@ -3,6 +3,8 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.utils.timezone import now
+from django.contrib.auth.models import AbstractUser
 
 
 
@@ -21,6 +23,13 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', 'ADMIN') 
         return self.create_user(email, password, **extra_fields)
+    
+class User(AbstractUser):
+    mobile_number = models.CharField(max_length=15, unique=True, null=True, blank=True)
+
+    otp = models.CharField(max_length=6, null=True, blank=True)
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+
 
 class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = (
@@ -315,5 +324,19 @@ class TaskActivity(models.Model):
     def __str__(self):
         return f"{self.actor.email} - {self.action_type}"   
     
-   
+class DriveFile(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="drive_files"
+    )
+    original_name = models.CharField(max_length=255)
+    file = models.FileField(upload_to="drive/")
+    size = models.BigIntegerField(default=0)
+    content_type = models.CharField(max_length=100, default="application/octet-stream")
+    uploaded_at = models.DateTimeField(default=now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.original_name
 
