@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from .django_setup import setup_django
 setup_django()
 from fastapi_app.routers import auth, users, email, chat, analytics,  meet, calendar, notes, notifications, task, profile
