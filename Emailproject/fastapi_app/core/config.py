@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # print(f"DEBUG: Looking for .env at: {os.path.join(BASE_DIR, '.env')}")
 
@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(BASE_DIR, ".env"),
+        env_file_encoding="utf-8",
         env_ignore_empty=True,
         extra="ignore"
     )
