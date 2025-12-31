@@ -166,7 +166,7 @@ def reset_password(data: ResetPasswordWithOTP):
 
 @router.post("/forgot-username", status_code=200)
 def forgot_username(data: ForgotUsernameRequest):
-    user = User.objects.filter(phone_number=data.phone_number).first()
+    user = User.objects.filter(mobile_number=data.phone_number).first()
 
     if not user:
         return {
