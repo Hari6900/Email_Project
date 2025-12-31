@@ -24,7 +24,7 @@ class UserCreate(BaseModel):
     mobile_number: Optional[str]
     gender: str
     password: str
-    # confirm_password: str
+    confirm_password: str
 
     @field_validator("password")
     def validate_password_strength(cls, v):
