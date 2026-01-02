@@ -15,7 +15,7 @@ from django_backend.models import User
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
 
-#  CREATE PROFILE
+
 @router.post("/", response_model=ProfileRead)
 async def create_profile(
     data: ProfileCreate,
@@ -34,7 +34,7 @@ async def create_profile(
     return profile
 
 
-# GET MY PROFILE
+
 @router.get("/", response_model=ProfileRead)
 async def get_my_profile(current_user: User = Depends(get_current_user)):
     profile = await sync_to_async(UserProfile.objects.filter(user=current_user).first)()
@@ -53,7 +53,7 @@ def get_account_activity(
     return list(activities)
 
 
-# UPDATE SETTINGS
+
 @router.patch("/settings", response_model=ProfileRead)
 async def update_settings(
     data: ProfileSettingsUpdate,
@@ -74,7 +74,7 @@ async def update_settings(
     return profile
 
 
-# 1. SETUP 2FA (Generate Key & QR)
+
 @router.post("/2fa/setup", response_model=TwoFactorSetupResponse)
 async def setup_two_factor(current_user: User = Depends(get_current_user)):
     @sync_to_async
@@ -95,13 +95,13 @@ async def setup_two_factor(current_user: User = Depends(get_current_user)):
     profile.two_factor_secret = secret
     await sync_to_async(profile.save)()
 
-    # Generate otpauth compatible URI
+
     uri = pyotp.totp.TOTP(secret).provisioning_uri(
         name=current_user.email,
         issuer_name="Stackly"
     )
 
-    # Fallback: Base64 the URI string (QR apps accept this)
+  
     qr_bytes = uri.encode("utf-8")
     qr_base64 = base64.b64encode(qr_bytes).decode("utf-8")
 
@@ -111,7 +111,7 @@ async def setup_two_factor(current_user: User = Depends(get_current_user)):
     }
 
 
-# 2. VERIFY 2FA
+
 @router.post("/2fa/verify")
 async def verify_two_factor(
     data: TwoFactorVerifyRequest,

@@ -11,7 +11,7 @@ from fastapi_app.routers.notifications import create_notification
 router = APIRouter()
 User = get_user_model()
 
-# CREATE A MEETING
+
 def _generate_meeting(user, title, type_choice):
     code = secrets.token_urlsafe(8)
     return Meeting.objects.create(
@@ -73,7 +73,7 @@ def invite_to_meeting(
 
     return {"message": f"Invitation sent to {invitee.email}", "link": join_url}
 
-# LIST MY MEETINGS
+
 @router.get("/list", response_model=list[MeetingRead])
 def list_my_meetings(current_user: User = Depends(get_current_user)):
     meetings = Meeting.objects.filter(host=current_user).order_by("-created_at")
@@ -85,7 +85,7 @@ async def join_meeting(
     meeting_id: int, 
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Get the meeting details
+ 
     try:
         meeting = await sync_to_async(Meeting.objects.get)(id=meeting_id)
     except Meeting.DoesNotExist:
