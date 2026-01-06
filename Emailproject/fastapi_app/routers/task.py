@@ -16,7 +16,7 @@ def log_activity(task: Task, user: User, action: str, details: str):
         details=details
     )
 
-# LIST TASKS 
+
 @router.get("/", response_model=List[TaskRead])
 def list_my_tasks(
     status: Optional[str] = Query(None, description="Filter by status (todo, in_progress, done)"),
@@ -44,7 +44,6 @@ def list_my_tasks(
         
     return tasks.distinct() 
 
-# CREATE TASK (Manual)
 @router.post("/", response_model=TaskRead)
 def create_task(data: TaskCreate, current_user: User = Depends(get_current_user)):
     assignee = None
@@ -81,7 +80,7 @@ def create_task(data: TaskCreate, current_user: User = Depends(get_current_user)
 
     return task
 
-# UPDATE TASK
+
 @router.patch("/{task_id}", response_model=TaskRead)
 def update_task(task_id: int, data: TaskUpdate, current_user: User = Depends(get_current_user)):
     try:
@@ -116,7 +115,7 @@ def update_task(task_id: int, data: TaskUpdate, current_user: User = Depends(get
     task.save()
     return task
 
-# EMAIL TO TASK
+
 @router.post("/from-email/{email_id}", response_model=TaskRead)
 def create_task_from_email(email_id: int, current_user: User = Depends(get_current_user)):
     try:
@@ -133,7 +132,7 @@ def create_task_from_email(email_id: int, current_user: User = Depends(get_curre
     )
     return task
 
-# CHAT TO TASK 
+
 @router.post("/from-chat/{message_id}", response_model=TaskRead)
 def create_task_from_chat(message_id: int, current_user: User = Depends(get_current_user)):
     """
@@ -184,7 +183,7 @@ def list_comments(task_id: int, current_user: User = Depends(get_current_user)):
         
     return task.comments.all().order_by('-created_at')
 
-# GET ACTIVITY LOG
+
 @router.get("/{task_id}/history", response_model=List[ActivityRead])
 def get_task_history(task_id: int, current_user: User = Depends(get_current_user)):
     try:
@@ -194,7 +193,6 @@ def get_task_history(task_id: int, current_user: User = Depends(get_current_user
         
     return task.activity_log.all().order_by('-created_at')
 
-# ADD TAG TO TASK
 @router.post("/{task_id}/tags", response_model=TaskRead)
 def add_tag_to_task(task_id: int, tag_data: AddTagRequest, current_user: User = Depends(get_current_user)):
     try:
@@ -209,7 +207,7 @@ def add_tag_to_task(task_id: int, tag_data: AddTagRequest, current_user: User = 
     
     return task
 
-# CREATE PROJECT
+
 @router.post("/projects", response_model=ProjectRead)
 def create_project(data: ProjectCreate, current_user: User = Depends(get_current_user)):
     project = Project.objects.create(
@@ -219,7 +217,7 @@ def create_project(data: ProjectCreate, current_user: User = Depends(get_current
     )
     return project
 
-# LIST PROJECTS
+
 @router.get("/projects", response_model=List[ProjectRead])
 def list_projects(current_user: User = Depends(get_current_user)):
     return Project.objects.all()
