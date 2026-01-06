@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # 1. Redis (The Message Broker)
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  # 2. Web Server (FastAPI + Django)
+  web:
+    build: .
+    # Runs FastAPI using Uvicorn
+    command: uvicorn fastapi_app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    env_file:
+      - ../.env    
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+  # 3. Celery Worker (Background Tasks)
+  celery:
+    build: .
+    # 'email_project' matches the folder name containing celery.py
+    command: celery -A email_project worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+      - web
+    env_file:
+      - ../.env     
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0

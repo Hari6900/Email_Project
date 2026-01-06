@@ -126,6 +126,12 @@ class ChatMessage(models.Model):
     room = models.ForeignKey(ChatRoom, related_name="messages", on_delete=models.CASCADE)
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="sent_chat_messages", on_delete=models.CASCADE)
     parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replies')
+    TYPE_CHOICES = (
+        ('TEXT', 'Text'),
+        ('SYSTEM', 'System Alert'),
+        ('FILE', 'File'),
+    )
+    message_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='TEXT')
     content = models.TextField(blank=True, null=True)
     attachment = models.FileField(upload_to='chat_attachments/', blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -215,6 +221,13 @@ class Meeting(models.Model):
     host = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="hosted_meetings", on_delete=models.CASCADE)
     title = models.CharField(max_length=255, default="New Meeting")
     meeting_code = models.CharField(max_length=50, unique=True)
+    chat_room = models.OneToOneField(
+        ChatRoom, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="meeting"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
     
@@ -241,6 +254,13 @@ class Note(models.Model):
 class Event(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
+    meeting = models.OneToOneField(
+        Meeting,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="event"
+    )
     start_datetime = models.DateTimeField()
     end_datetime = models.DateTimeField()
     is_all_day = models.BooleanField(default=False)
