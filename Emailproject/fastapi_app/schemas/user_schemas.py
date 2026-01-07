@@ -48,7 +48,6 @@ class UserCreate(BaseModel):
         if not phonenumbers.is_valid_number(phone):
             raise ValueError("Invalid mobile number")
 
-        
         return phonenumbers.format_number(
             phone, phonenumbers.PhoneNumberFormat.E164
         )
@@ -88,6 +87,24 @@ class UserCreate(BaseModel):
             raise ValueError("Password and confirm password do not match")
         return self
 
+    @field_validator("dob")
+    def validate_dob(cls, v):
+        if v is None:
+            return v  
+
+        today = date.today()
+
+        if v > today:
+            raise ValueError("Date of birth cannot be in the future")
+
+        
+        age = today.year - v.year - ((today.month, today.day) < (v.month, v.day))
+
+        if age < 10:
+            raise ValueError("User must be at least 10 years old")
+
+        return v
+
 
 class UserRead(BaseModel):
     id: int
@@ -125,7 +142,6 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     def validate_password_strength(cls, v):
         return UserCreate.validate_password_strength(v)
-
 
 
 ResetPasswordWithOTP = ResetPasswordRequest
