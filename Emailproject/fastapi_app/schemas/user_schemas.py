@@ -54,24 +54,36 @@ class UserCreate(BaseModel):
 
     @field_validator("password")
     def validate_password_strength(cls, v):
-        if len(v) < 12:
-            raise ValueError("Password must be at least 12 characters long")
+        # 1. Check Length (Min 6, Max 8)
+        if len(v) < 6 or len(v) > 8:
+            raise ValueError("Password must be between 6 and 8 characters long")
+
+        # 2. Check for at least one Uppercase letter
         if not re.search(r"[A-Z]", v):
             raise ValueError("Password must contain at least one uppercase letter")
+
+        # 3. Check for at least one Lowercase letter
         if not re.search(r"[a-z]", v):
             raise ValueError("Password must contain at least one lowercase letter")
+
+        # 4. Check for at least one Digit
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one number")
+
+        # 5. Check for at least one Special Character
         if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
             raise ValueError("Password must contain at least one special character")
 
         try:
             sha1_password = hashlib.sha1(v.encode("utf-8")).hexdigest().upper()
+            
             prefix, suffix = sha1_password[:5], sha1_password[5:]
+            
             response = requests.get(
                 f"https://api.pwnedpasswords.com/range/{prefix}",
                 timeout=5,
             )
+            
             if suffix in response.text:
                 raise ValueError(
                     "This password has been exposed in a data breach. Please choose a different one."
