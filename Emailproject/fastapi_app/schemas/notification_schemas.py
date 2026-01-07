@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 class NotificationRead(BaseModel):
@@ -7,7 +7,7 @@ class NotificationRead(BaseModel):
     notification_type: str
     is_read: bool
     created_at: datetime
-    related_id: int | None = None
+    related_id: int | None = Field(default=None, validation_alias="object_id")
 
     class Config:
         from_attributes = True
