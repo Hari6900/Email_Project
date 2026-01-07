@@ -51,8 +51,6 @@ def create_user(user_in: UserCreate):
 
     return user
 
-
-
 @router.get("/me", response_model=UserRead)
 def read_users_me(current_user = Depends(get_current_active_user)):
     """
