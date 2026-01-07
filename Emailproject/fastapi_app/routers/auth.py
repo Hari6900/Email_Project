@@ -12,10 +12,13 @@ from ..core.config import settings
 from ..schemas.user_schemas import Token, ForgotPasswordRequest, ResetPasswordWithOTP, ForgotUsernameRequest
 
 from fastapi_app.utils.otp import generate_otp, otp_expiry
-from fastapi_app.utils.sms import send_sms
+
 
 from django.contrib.auth import get_user_model
 User = get_user_model()
+
+from fastapi_app.utils.sms import send_otp_sms
+
 
 router = APIRouter()
 
@@ -131,28 +134,55 @@ def forgot_password(data: ForgotPasswordRequest):
     user.otp_expires_at = otp_expiry()
     user.save(update_fields=["otp", "otp_expires_at"])
 
-    send_sms(
-        user.mobile_number,
-        f"Your password reset OTP is {otp}. It is valid for 5 minutes."
-    )
+    send_otp_sms(user.mobile_number, otp)
+    
+
+    return {"message": "OTP sent to registered mobile number"}@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+def forgot_password(data: ForgotPasswordRequest):
+    user = User.objects.filter(mobile_number=data.mobile_number).first()
+
+    # Always return same response (security best practice)
+    if not user:
+        return {"message": "If this mobile number exists, an OTP has been sent"}
+
+    otp = generate_otp()
+    expiry = otp_expiry()
+
+    user.otp = otp
+    user.otp_expires_at = expiry
+    user.save(update_fields=["otp", "otp_expires_at"])
+
+    
+    try:
+        send_otp_sms(user.mobile_number, otp)
+    except Exception as e:
+        print("SMS ERROR:", str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send OTP. Please try again later."
+        )
 
     return {"message": "OTP sent to registered mobile number"}
+
 
 
 @router.post("/reset-password")
 def reset_password(data: ResetPasswordWithOTP):
     user = User.objects.filter(mobile_number=data.mobile_number).first()
 
-    if not user or user.otp != data.otp:
+    if not user:
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    if user.otp_expires_at < now():
+    if user.otp != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    if not user.otp_expires_at or user.otp_expires_at < now():
         raise HTTPException(status_code=400, detail="OTP expired")
 
     user.set_password(data.new_password)
     user.otp = None
     user.otp_expires_at = None
-    user.save()
+    user.save(update_fields=["password", "otp", "otp_expires_at"])
 
     return {"message": "Password reset successful"}
 
@@ -170,20 +200,18 @@ def forgot_username(data: ForgotUsernameRequest):
     masked_emails = []
 
     for user in users:
-        email = user.email
-        local, domain = email.split("@")
-        masked_email = local[:2] + "****@" + domain
-        masked_emails.append(masked_email)
+        local, domain = user.email.split("@")
+        masked_emails.append(local[:2] + "****@" + domain)
 
     print("\n==========================================")
     print(" FORGOT USERNAME REQUEST")
     print(f" PHONE: {data.phone_number}")
     print(" USERNAMES:")
-    for e in masked_emails:
-        print(f"  - {e}")
+    for email in masked_emails:
+        print(f"  - {email}")
     print("==========================================\n")
 
     return {
         "message": "If this phone number exists, username details have been sent.",
-        "username_hints": masked_emails
+        "username_hints": masked_emails,
     }
