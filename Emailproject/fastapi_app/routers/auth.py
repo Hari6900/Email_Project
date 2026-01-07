@@ -68,8 +68,8 @@ def login_for_access_token(
     User = get_user_model()
     email = form_data.username
 
-    if not email.endswith("@stackly.com"):
-        raise HTTPException(status_code=400, detail="Only stackly.com emails allowed")
+    if not email.endswith("@thestackly.com"):
+        raise HTTPException(status_code=400, detail="Only thestackly.com emails allowed")
 
     try:
         user = User.objects.get(email=email)
