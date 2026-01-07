@@ -19,11 +19,11 @@
 
 # settings = Settings()
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-ENV_FILE = BASE_DIR / ".env"
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+# ENV_FILE = BASE_DIR / ".env"
 
 class Settings(BaseSettings):
     SECRET_KEY: str
@@ -31,10 +31,15 @@ class Settings(BaseSettings):
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    model_config = {
-        "env_file": ENV_FILE,
-        "env_file_encoding": "utf-8",
-    }
+    TWILIO_ACCOUNT_SID: str
+    TWILIO_AUTH_TOKEN: str
+    TWILIO_PHONE_NUMBER: str
+
+    model_config = SettingsConfigDict(
+        env_file=os.path.join(BASE_DIR, ".env"),
+        env_ignore_empty=True,
+        extra="ignore"
+    )
 
 settings = Settings()
 

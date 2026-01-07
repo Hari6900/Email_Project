@@ -26,6 +26,31 @@ class UserCreate(BaseModel):
     password: str
     confirm_password: str
 
+    @field_validator("mobile_number")
+    def validate_mobile_number(cls, v):
+        if v is None:
+            return v
+
+        v = v.strip()
+
+        if not re.fullmatch(r"[6-9]\d{9}", v):
+            raise ValueError("Enter a valid Indian mobile number")
+
+        fake_numbers = {
+            "1234567890",
+            "0123456789",
+            "9999999999",
+            "8888888888",
+            "7777777777",
+            "6666666666",
+            "0000000000",
+        }
+
+        if v in fake_numbers:
+            raise ValueError("Invalid mobile number")
+
+        return v
+
     @field_validator("password")
     def validate_password_strength(cls, v):
         if len(v) < 12:
@@ -61,6 +86,7 @@ class UserCreate(BaseModel):
     #         raise ValueError("Password and confirm password do not match")
     #     return self
 
+
 class UserRead(BaseModel):
     id: int
     email: EmailStr
@@ -85,12 +111,10 @@ class UserUpdate(BaseModel):
     nationality: Optional[str] = None
 
 
-# 🔹 Forgot password → send OTP to mobile
 class ForgotPasswordRequest(BaseModel):
     mobile_number: str
 
 
-# 🔹 RESET PASSWORD (kept for auth.py import compatibility)
 class ResetPasswordRequest(BaseModel):
     mobile_number: str
     otp: str
@@ -101,7 +125,7 @@ class ResetPasswordRequest(BaseModel):
         return UserCreate.validate_password_strength(v)
 
 
-# 🔹 Alias (optional but clean)
+
 ResetPasswordWithOTP = ResetPasswordRequest
 
 

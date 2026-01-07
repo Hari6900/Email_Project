@@ -29,6 +29,12 @@ def create_user(user_in: UserCreate):
             status_code=400,
             detail="Email already registered",
         )
+    
+    if not user_in.mobile_number:
+        raise HTTPException(
+            status_code=400,
+            detail="Mobile number is required"
+        )
 
  
     user = User(
@@ -44,6 +50,8 @@ def create_user(user_in: UserCreate):
     user.save()
 
     return user
+
+
 
 @router.get("/me", response_model=UserRead)
 def read_users_me(current_user = Depends(get_current_active_user)):
