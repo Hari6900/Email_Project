@@ -40,7 +40,7 @@ async def get_current_user_ws(token: str = Query(...)):
     except User.DoesNotExist:
         raise WebSocketDisconnect(code=credentials_exception)
     
-# REST API (The Paperwork)
+
 @router.post("/rooms", response_model=ChatRoomRead)
 def create_room(data: ChatRoomCreate, current_user = Depends(get_current_user)):
     related_email_obj = None
@@ -130,7 +130,7 @@ def search_messages(
         })
 
     return results
-# LIST ROOMS 
+
 @router.get("/rooms", response_model=List[ChatRoomRead])
 def list_rooms(current_user = Depends(get_current_user)):
     """
@@ -167,7 +167,7 @@ def list_rooms(current_user = Depends(get_current_user)):
 
     return results
 
-# GET ONLINE USERS 
+
 @router.get("/online", response_model=List[int])
 def get_online_users(current_user = Depends(get_current_user)):
     return manager.get_online_users()
@@ -230,7 +230,7 @@ def get_messages(
         })
 
     return results
-# EDIT MESSAGE
+
 @router.patch("/messages/{message_id}", response_model=MessageRead)
 async def edit_message(
     message_id: int,
@@ -271,7 +271,6 @@ async def edit_message(
 
     return await get_response_data()
 
-# MARK MESSAGES AS READ
 @router.post("/rooms/{room_id}/read")
 async def mark_room_as_read(
     room_id: int, 
@@ -308,7 +307,7 @@ async def mark_room_as_read(
 
     return {"message": "Messages marked as read", "updated_count": count}
 
-# DELETE MESSAGE 
+
 @router.delete("/messages/{message_id}", status_code=204)
 def delete_message(message_id: int, current_user: User = Depends(get_current_user)):
     try:
@@ -324,7 +323,7 @@ def delete_message(message_id: int, current_user: User = Depends(get_current_use
     
     return None
 
-# CHAT TRASH (Recycle Bin)
+
 @router.get("/trash", response_model=List[MessageRead])
 def chat_trash(current_user = Depends(get_current_user)):
     msgs = ChatMessage.objects.filter(
@@ -362,7 +361,7 @@ def chat_trash(current_user = Depends(get_current_user)):
         })
     return results
 
-# STAR MESSAGE (Toggle)
+
 @router.post("/messages/{message_id}/star")
 def star_message(message_id: int, current_user: User = Depends(get_current_user)):
     try:
@@ -402,7 +401,7 @@ def format_room_response(room):
         "last_message": last_msg
     }
 
-# LIST MY STARRED MESSAGES
+
 @router.get("/starred", response_model=List[MessageRead])
 def get_my_starred_messages(current_user: User = Depends(get_current_user)):
     msgs = current_user.starred_chat_messages.all().order_by("-timestamp")
@@ -418,8 +417,7 @@ def get_my_starred_messages(current_user: User = Depends(get_current_user)):
         }
         for m in msgs
     ]
-    
-# FILE UPLOAD 
+ 
 @router.post("/rooms/{room_id}/upload")
 async def upload_chat_attachment(
     room_id: int,
@@ -478,7 +476,7 @@ async def upload_chat_attachment(
 
     return {"message": "File uploaded", "url": msg_obj.attachment.url}
 
-# SEND TEXT MESSAGE 
+
 class TextMessageCreate(BaseModel):
     content: str
     parent_id: Optional[int] = None
@@ -667,7 +665,7 @@ async def send_text_message(
 
     return {"message": "Message sent", "id": msg_obj.id}
 
-# WEBSOCKET (The Live Line)
+
 @router.websocket("/ws/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
     await manager.connect(websocket, room_id, user_id)
@@ -808,7 +806,6 @@ def leave_room(
         
     return {"message": "You have left the group"}     
 
- # START CALL (Huddle) 
 @router.post("/rooms/{room_id}/call")
 async def start_call(
     room_id: int,
@@ -840,7 +837,7 @@ async def start_call(
         msg = ChatMessage.objects.create(
             room=room,
             sender=current_user,
-            content=f"📞 started a call. Click to join: {join_url}"
+            content=f" started a call. Click to join: {join_url}"
         )
         return msg
 
@@ -859,7 +856,7 @@ async def start_call(
 
     return {"message": "Call started", "link": join_url}
 
-# Helper Function: Auto-Tag Users
+
 def process_mentions(message_obj):
     """
     Scans content for @Firstname and tags the user.
@@ -874,7 +871,7 @@ def process_mentions(message_obj):
         for u in users:
             message_obj.mentions.add(u)
             
-# GET MY MENTIONS
+
 @router.get("/mentions", response_model=List[MessageRead])
 def get_my_mentions(current_user: User = Depends(get_current_user)):
     """

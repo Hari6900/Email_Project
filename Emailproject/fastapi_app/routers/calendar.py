@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -6,12 +7,13 @@ from asgiref.sync import sync_to_async
 from django_backend.models import Event, EventAttendee, EventReminder, Meeting, ChatRoom
 from django.contrib.auth import get_user_model
 from fastapi_app.schemas.calendar_schemas import EventCreate, EventRead 
+from django.contrib.auth import get_user_model
+from fastapi_app.schemas.calendar_schemas import EventCreate, EventRead 
 from fastapi_app.routers.auth import get_current_user
 from fastapi_app.tasks import process_event_invites
 
 User = get_user_model()
 router = APIRouter(prefix="/calendar", tags=["Calendar"])
-
 
 async def _get_event_or_404(event_id: int) -> Event:
     """
@@ -22,10 +24,8 @@ async def _get_event_or_404(event_id: int) -> Event:
         raise HTTPException(status_code=404, detail="Event not found")
     return ev
 
-
 def _start_of_week(d: date) -> date:
     return d - timedelta(days=d.weekday())
-
 
 def _end_of_week(d: date) -> date:
     return _start_of_week(d) + timedelta(days=6)
@@ -54,7 +54,7 @@ async def create_event(
         timezone=payload.timezone or "UTC",
         created_by=current_user,
     )
-    
+
     if create_meeting_link:
         chat_room = await sync_to_async(ChatRoom.objects.create)(
             name=f"Chat: {payload.title}",
@@ -92,6 +92,7 @@ async def create_event(
 
     if payload.attendees:
         for user_id in payload.attendees:
+
             if user_id == current_user.id:
                 continue
 

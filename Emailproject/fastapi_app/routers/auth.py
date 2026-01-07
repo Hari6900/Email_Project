@@ -21,7 +21,6 @@ router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-# NEW: get_current_user (required for Task creation)
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     """
     Extracts the logged-in user from the JWT access token.
@@ -31,7 +30,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     - send messages
     """
 
-    # Decode token
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(
@@ -47,7 +45,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             detail="Invalid token payload",
         )
 
-    # Get user from Django ORM
     user = await sync_to_async(User.objects.filter(email=email).first)()
 
     if not user:
@@ -58,7 +55,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 
     return user
 
-# LOGIN
+
 @router.post("/login", response_model=Token)
 def login_for_access_token(
     request: Request, 
@@ -68,7 +65,6 @@ def login_for_access_token(
     User = get_user_model()
     email = form_data.username
 
-    # 1. Standard Authentication
     if not email.endswith("@stackly.com"):
         raise HTTPException(status_code=400, detail="Only stackly.com emails allowed")
 
@@ -80,8 +76,6 @@ def login_for_access_token(
     if not user.check_password(form_data.password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     
-    # 2. 2FA ENFORCEMENT LOGIC (The New Guard)
-    # Check if user has 2FA enabled
     is_2fa_on = False
     if hasattr(user, 'profile') and user.profile.is_2fa_enabled:
         is_2fa_on = True
@@ -101,7 +95,7 @@ def login_for_access_token(
         if not totp.verify(otp):
              raise HTTPException(status_code=401, detail="Invalid 2FA Code")
 
-    # --- PRIVACY CHECK & LOGGING (Your existing code) ---
+
     should_record = True 
     try:
         if hasattr(user, 'profile'):
@@ -114,7 +108,7 @@ def login_for_access_token(
         user_agent = request.headers.get("user-agent")
         LoginActivity.objects.create(user=user, ip_address=client_ip, user_agent=user_agent)
     
-    # 4. Generate Token
+    
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     access_token = create_access_token (
@@ -122,13 +116,13 @@ def login_for_access_token(
         expires_delta=access_token_expires,
     )
     return {"access_token": access_token, "token_type": "bearer"}
-# FORGOT PASSWORD
+
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
 def forgot_password(data: ForgotPasswordRequest):
     user = User.objects.filter(mobile_number=data.mobile_number).first()
 
     if not user:
-        # security-safe response
+       
         return {"message": "If this mobile number exists, an OTP has been sent"}
 
     otp = generate_otp()
@@ -144,7 +138,7 @@ def forgot_password(data: ForgotPasswordRequest):
 
     return {"message": "OTP sent to registered mobile number"}
 
-# RESET PASSWORD
+
 @router.post("/reset-password")
 def reset_password(data: ResetPasswordWithOTP):
     user = User.objects.filter(mobile_number=data.mobile_number).first()
@@ -166,25 +160,30 @@ def reset_password(data: ResetPasswordWithOTP):
 
 @router.post("/forgot-username", status_code=200)
 def forgot_username(data: ForgotUsernameRequest):
-    user = User.objects.filter(phone_number=data.phone_number).first()
+    users = User.objects.filter(mobile_number=data.phone_number)
 
-    if not user:
+    if not users.exists():
         return {
             "message": "If this phone number exists, username details have been sent."
         }
 
-    # Mask email for security
-    email = user.email
-    masked_email = email[0:2] + "****@" + email.split("@")[1]
+    masked_emails = []
 
-    # Simulate sending email / SMS
+    for user in users:
+        email = user.email
+        local, domain = email.split("@")
+        masked_email = local[:2] + "****@" + domain
+        masked_emails.append(masked_email)
+
     print("\n==========================================")
-    print(f" FORGOT USERNAME REQUEST")
+    print(" FORGOT USERNAME REQUEST")
     print(f" PHONE: {data.phone_number}")
-    print(f" USERNAME (EMAIL): {masked_email}")
+    print(" USERNAMES:")
+    for e in masked_emails:
+        print(f"  - {e}")
     print("==========================================\n")
 
     return {
         "message": "If this phone number exists, username details have been sent.",
-        "username_hint": masked_email
+        "username_hints": masked_emails
     }

@@ -25,7 +25,6 @@ router = APIRouter()
 User = get_user_model()
 
 
-# Helper: Only stackly.com emails allowed
 def ensure_stackly_email(email: str):
     if not email.endswith("@stackly.com"):
         raise HTTPException(
@@ -39,7 +38,6 @@ def get_attachments(email_obj):
         for a in email_obj.attachments.all()
     ]        
 
-# SEND A EMAIL
 @router.post("/send")
 def send_email(
     receiver_email: str = Form(...),
@@ -48,7 +46,7 @@ def send_email(
     file: Union[UploadFile, str, None] = File(None),
     current_user: User = Depends(get_current_user)
 ):  
-    # 🔹 Keep your original string check
+    
     if isinstance(file, str):
         file = None
         
@@ -60,7 +58,6 @@ def send_email(
     except User.DoesNotExist:
         raise HTTPException(status_code=404, detail="Receiver does not exist")
 
-    # 🔹 Your original Email creation (UNCHANGED)
     email_obj = Email.objects.create(
         sender=current_user,
         receiver=receiver,     
@@ -69,7 +66,6 @@ def send_email(
         status='SENT'
     )
 
-    # 🔹 Your original notification logic 
     if receiver:               
         create_notification(
             recipient=receiver, 
@@ -79,9 +75,7 @@ def send_email(
 
     file_url = None
 
-    # ===========================
-    # 🔹 ATTACHMENT LOGIC (ADDED)
-    # ===========================
+  
     if file and file.filename:
         upload_dir = Path("media/temp")
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -93,7 +87,7 @@ def send_email(
 
         ext = temp_path.suffix.lower()
 
-        # ✅ Convert Word → PDF
+   
         if ext in [".doc", ".docx"]:
             pdf_path = temp_path.with_suffix(".pdf")
             docx_to_pdf(temp_path, pdf_path)
@@ -101,7 +95,7 @@ def send_email(
         else:
             final_path = temp_path
 
-        # 🔹 Save attachment to Django model (UNCHANGED logic)
+      
         with open(final_path, "rb") as f:
             attachment = Attachment(email=email_obj)
             attachment.file.save(final_path.name, ContentFile(f.read()))
@@ -114,7 +108,7 @@ def send_email(
         "attachment": file_url
     }
 
-# REPLY TO A EMAIL
+
 @router.post("/reply")
 def reply_email(
     data: EmailReply,
@@ -138,7 +132,7 @@ def reply_email(
 
     return {"message": "Reply sent", "id": reply.id}
 
-# INBOX
+
 @router.get("/inbox")
 def inbox(
     q: Optional[str] = None,
@@ -188,7 +182,6 @@ def inbox(
     ]
 
 
-# SENT EMAILS
 @router.get("/sent")
 def sent(current_user: User = Depends(get_current_user)):
     msgs = Email.objects.filter(
@@ -207,7 +200,7 @@ def sent(current_user: User = Depends(get_current_user)):
         for m in msgs
     ]
 
-# LIST DRAFTS
+
 @router.get("/drafts", response_model=List[EmailRead])
 def list_drafts(current_user: User = Depends(get_current_user)):
     """
@@ -222,7 +215,6 @@ def list_drafts(current_user: User = Depends(get_current_user)):
     
     return list(emails)
 
-# FULL THREAD VIEW
 @router.get("/thread/{email_id}")
 def email_thread(
     email_id: int,
@@ -250,7 +242,7 @@ def email_thread(
         for m in thread
     ]
     
-   # DELETE EMAIL (Soft Delete) 
+   
 @router.delete("/{email_id}", status_code=204)
 def delete_email(email_id: int, current_user: User = Depends(get_current_user)):
     try:
@@ -269,7 +261,6 @@ def delete_email(email_id: int, current_user: User = Depends(get_current_user)):
     email_obj.save()
     return None    
 
-# UPDATE FLAGS (Important/Favorite/Read)
 @router.patch("/{email_id}")
 def update_email_flags(
     email_id: int, 
@@ -292,7 +283,7 @@ def update_email_flags(
     email_obj.save()
     return {"message": "Email updated", "id": email_obj.id, "is_read": email_obj.is_read, "is_important": email_obj.is_important, "is_favorite": email_obj.is_favorite, "is_archived": email_obj.is_archived}
 
-# SAVE DRAFT
+
 @router.post("/draft")
 def save_draft(
     data: DraftCreate,
@@ -318,7 +309,7 @@ def save_draft(
 
     return {"message": "Draft saved", "id": draft.id, "status": "DRAFT"}
 
-# PUBLISH DRAFT (Send it)
+
 @router.post("/{email_id}/publish")
 def publish_draft(
     email_id: int,
@@ -344,7 +335,6 @@ def publish_draft(
 
     return {"message": "Email sent successfully", "id": email_obj.id, "status": "SENT"}
 
-# EDIT DRAFT
 @router.patch("/draft/{email_id}")
 def edit_draft(
     email_id: int,
@@ -388,7 +378,6 @@ def edit_draft(
         "receiver": email_obj.receiver.email if email_obj.receiver else None
     }
 
-# FORWARD EMAIL
 @router.post("/{email_id}/forward")
 def forward_email(
     email_id: int,
@@ -425,7 +414,7 @@ def forward_email(
 
     return {"message": "Email forwarded", "id": forwarded_email.id}
 
-# ARCHIVED EMAILS
+
 @router.get("/archived")
 def archived(current_user: User = Depends(get_current_user)):
     msgs = Email.objects.filter(
@@ -449,7 +438,7 @@ def archived(current_user: User = Depends(get_current_user)):
         for m in msgs
     ]
     
-  # STARRED (Favorites)
+
 @router.get("/starred")
 def starred(current_user: User = Depends(get_current_user)):
     
@@ -473,7 +462,7 @@ def starred(current_user: User = Depends(get_current_user)):
         for m in msgs
     ]      
     
-  # IMPORTANT EMAILS
+
 @router.get("/important")
 def important(current_user: User = Depends(get_current_user)):
     msgs = Email.objects.filter(
@@ -496,7 +485,7 @@ def important(current_user: User = Depends(get_current_user)):
         for m in msgs
     ]    
 
-# TRASH (Recycle Bin)
+
 @router.get("/trash")
 def trash(current_user: User = Depends(get_current_user)):
     msgs = Email.objects.filter(
@@ -519,7 +508,7 @@ def trash(current_user: User = Depends(get_current_user)):
         for m in msgs
     ]
     
-# RESTORE FROM TRASH
+
 @router.post("/{email_id}/restore")
 def restore_email(email_id: int, current_user: User = Depends(get_current_user)):
     try:
@@ -574,7 +563,7 @@ async def list_spam_emails(current_user: User = Depends(get_current_user)):
     )
     return emails
 
-# LIST UNREAD EMAILS
+
 @router.get("/unread", response_model=List[EmailRead])
 def list_unread(current_user: User = Depends(get_current_user)):
     """

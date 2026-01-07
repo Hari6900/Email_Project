@@ -30,10 +30,10 @@ def create_user(user_in: UserCreate):
             detail="Email already registered",
         )
 
-    # 2. Create the user (Hash the password!)
+ 
     user = User(
     email=user_in.email,
-    first_name=user_in.first_name,         
+    first_name=user_in.first_name,        
     last_name=user_in.last_name,
     dob=user_in.dob,                  
     mobile_number=user_in.mobile_number,  
@@ -85,7 +85,7 @@ def delete_user(
     
     return None
 
-#  UPDATE MY PROFILE 
+ 
 @router.patch("/me", response_model=UserRead)
 def update_user_me(
     user_update: UserUpdate, 
