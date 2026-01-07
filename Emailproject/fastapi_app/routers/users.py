@@ -18,10 +18,10 @@ def create_user(user_in: UserCreate):
     """
     Create a new user.
     """
-    if not user_in.email.lower().endswith("@stackly.com"):
+    if not user_in.email.lower().endswith("@thestackly.com"):
         raise HTTPException(
             status_code=400,
-            detail="Only stackly.com domain email is allowed"
+            detail="Only thestackly.com domain email is allowed"
         )
     
     if User.objects.filter(email=user_in.email).exists():
