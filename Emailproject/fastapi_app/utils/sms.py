@@ -10,8 +10,9 @@ def send_otp_sms(mobile_number: str, otp: str):
     """
     Send OTP via Twilio SMS
     """
+    
     if not mobile_number.startswith("+"):
-        raise ValueError("Mobile number must include country code (e.g. +91)")
+        raise ValueError("Mobile number must be in international format")
 
     message = client.messages.create(
         body=f"Your OTP is {otp}. Valid for 5 minutes.",
