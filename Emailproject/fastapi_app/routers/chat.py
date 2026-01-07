@@ -672,9 +672,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
     
     @sync_to_async
     def save_message(room_id, user_id, content, parent_id=None):
-        """
-        Save message to DB and extract all necessary data safely.
-        """
         room = ChatRoom.objects.get(id=room_id)
         sender = User.objects.get(id=user_id)
         
@@ -719,7 +716,31 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
                     "room_id": room_id
                 }, room_id)
                 continue 
+            
+            if payload.get("type") == "SCREEN_SHARE_STATUS":
+                is_sharing = payload.get("is_sharing")
+                
+                user = await sync_to_async(User.objects.get)(id=user_id)
+                action_text = "started sharing their screen" if is_sharing else "stopped sharing"
+                content = f" {user.first_name} {action_text}"
 
+                msg_obj = await sync_to_async(ChatMessage.objects.create)(
+                    room_id=room_id,
+                    sender=user,
+                    content=content,
+                    message_type='SYSTEM' 
+                )
+
+                response = {
+                    "type": "system_alert",
+                    "content": content,
+                    "is_sharing": is_sharing,
+                    "sharer_id": user_id,
+                    "timestamp": str(msg_obj.timestamp)
+                }
+                await manager.broadcast(response, room_id)
+                continue
+            
             content = payload.get("content")
             parent_id = payload.get("parent_id")
             
@@ -744,7 +765,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, user_id: int):
     except WebSocketDisconnect:
         await manager.disconnect(websocket, room_id, user_id) 
              
-
 @router.post("/rooms/{room_id}/members")
 def add_members(
     room_id: int,
