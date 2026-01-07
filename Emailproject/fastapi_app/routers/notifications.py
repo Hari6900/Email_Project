@@ -25,10 +25,9 @@ def mark_as_read(
     except Notification.DoesNotExist:
         raise HTTPException(status_code=404, detail="Notification not found")
         
-def create_notification(recipient, message, type_choice, related_id=None):
+def create_notification(recipient, message, type_choice="general"):
     Notification.objects.create(
         recipient=recipient,
         message=message,
-        notification_type=type_choice,
-        related_id=related_id
+        notification_type=type_choice
     )

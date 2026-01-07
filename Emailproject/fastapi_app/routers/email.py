@@ -66,13 +66,11 @@ def send_email(
         status='SENT'
     )
 
-  
     if receiver:               
         create_notification(
             recipient=receiver, 
             message=f"New email from {current_user.email}: {subject}",
-            type_choice="email",
-            related_id=email_obj.id
+            type_choice="email"
         )
 
     file_url = None
