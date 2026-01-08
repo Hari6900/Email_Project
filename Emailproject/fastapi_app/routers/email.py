@@ -26,10 +26,10 @@ User = get_user_model()
 
 
 def ensure_stackly_email(email: str):
-    if not email.endswith("@stackly.com"):
+    if not email.endswith("@thestackly.com"):
         raise HTTPException(
             status_code=400,
-            detail="Only stackly.com email addresses are allowed"
+            detail="Only thestackly.com email addresses are allowed"
         )
         
 def get_attachments(email_obj):
