@@ -66,13 +66,21 @@ def login_for_access_token(
     otp: str | None = Query(default=None, description="2FA Code if enabled") 
 ):
     User = get_user_model()
-    email = form_data.username
+    email = form_data.username.strip()
 
-    if not email.endswith("@thestackly.com"):
-        raise HTTPException(status_code=400, detail="Only thestackly.com emails allowed")
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email format")
+
+    local_part, domain = email.rsplit("@", 1)
+
+    if domain.lower() != "thestackly.com":
+        raise HTTPException(
+        status_code=400,
+        detail="Only thestackly.com emails allowed"
+    )
 
     try:
-        user = User.objects.get(email=email)
+        user = User.objects.get(email__iexact=email)
     except User.DoesNotExist:
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 

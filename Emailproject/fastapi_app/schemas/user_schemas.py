@@ -55,7 +55,7 @@ class UserCreate(BaseModel):
     @field_validator("password")
     def validate_password_strength(cls, v):
 
-        if len(v) < 6 or len(v) > 8:
+        if len(v) < 6 or len(v) > 18:
             raise ValueError("Password must be between 6 and 8 characters long")
 
         if not re.search(r"[A-Z]", v):
