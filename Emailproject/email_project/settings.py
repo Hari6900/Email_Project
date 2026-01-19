@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from corsheaders.defaults import default_headers
 
 load_dotenv()
 
@@ -44,10 +45,12 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_yasg',
     'django_backend',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -152,5 +155,38 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS =list(default_headers) + [
+    "content-type",
+    "authorization",
+]
+
+CORS_ALLOW_METHODS = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "https://stackly-email.netlify.app",
+    "https://stackly-email1.netlify.app",
+    "https://email-stackly.netlify.app",
+    "https://emailapp321.netlify.app",
+    "https://0f782c85d93e.ngrok-free.app"
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://stackly-email.netlify.app",
+    "https://stackly-email1.netlify.app",
+    "https://email-stackly.netlify.app",
+    "https://emailapp321.netlify.app",
+    "https://0f782c85d93e.ngrok-free.app"
+]
 
 FAST2SMS_API_KEY = os.getenv("FAST2SMS_API_KEY")
