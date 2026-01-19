@@ -24,12 +24,19 @@ from fastapi_app.utils.file_convert import docx_to_pdf
 router = APIRouter()
 User = get_user_model()
 
-
 def ensure_stackly_email(email: str):
-    if not email.endswith("@stackly.com"):
+    if "@" not in email:
         raise HTTPException(
             status_code=400,
-            detail="Only stackly.com email addresses are allowed"
+            detail="Invalid email format"
+        )
+
+    local_part, domain = email.rsplit("@", 1)
+
+    if domain.lower() != "thestackly.com":
+        raise HTTPException(
+            status_code=400,
+            detail="Only thestackly.com email addresses are allowed"
         )
         
 def get_attachments(email_obj):

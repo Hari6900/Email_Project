@@ -54,23 +54,20 @@ class UserCreate(BaseModel):
 
     @field_validator("password")
     def validate_password_strength(cls, v):
-        # 1. Check Length (Min 6, Max 8)
-        if len(v) < 6 or len(v) > 8:
-            raise ValueError("Password must be between 6 and 8 characters long")
 
-        # 2. Check for at least one Uppercase letter
+        if len(v) < 6 or len(v) > 18:
+            raise ValueError("Password must be between 6 and 18 characters long")
+
         if not re.search(r"[A-Z]", v):
             raise ValueError("Password must contain at least one uppercase letter")
 
-        # 3. Check for at least one Lowercase letter
         if not re.search(r"[a-z]", v):
             raise ValueError("Password must contain at least one lowercase letter")
 
-        # 4. Check for at least one Digit
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one number")
 
-        # 5. Check for at least one Special Character
+
         if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
             raise ValueError("Password must contain at least one special character")
 

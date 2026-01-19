@@ -66,13 +66,21 @@ def login_for_access_token(
     otp: str | None = Query(default=None, description="2FA Code if enabled") 
 ):
     User = get_user_model()
-    email = form_data.username
+    email = form_data.username.strip()
 
-    if not email.endswith("@thestackly.com"):
-        raise HTTPException(status_code=400, detail="Only thestackly.com emails allowed")
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email format")
+
+    local_part, domain = email.rsplit("@", 1)
+
+    if domain.lower() != "thestackly.com":
+        raise HTTPException(
+        status_code=400,
+        detail="Only thestackly.com emails allowed"
+    )
 
     try:
-        user = User.objects.get(email=email)
+        user = User.objects.get(email__iexact=email)
     except User.DoesNotExist:
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
@@ -137,34 +145,7 @@ def forgot_password(data: ForgotPasswordRequest):
     send_otp_sms(user.mobile_number, otp)
     
 
-    return {"message": "OTP sent to registered mobile number"}@router.post("/forgot-password", status_code=status.HTTP_200_OK)
-def forgot_password(data: ForgotPasswordRequest):
-    user = User.objects.filter(mobile_number=data.mobile_number).first()
-
-    # Always return same response (security best practice)
-    if not user:
-        return {"message": "If this mobile number exists, an OTP has been sent"}
-
-    otp = generate_otp()
-    expiry = otp_expiry()
-
-    user.otp = otp
-    user.otp_expires_at = expiry
-    user.save(update_fields=["otp", "otp_expires_at"])
-
-    
-    try:
-        send_otp_sms(user.mobile_number, otp)
-    except Exception as e:
-        print("SMS ERROR:", str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to send OTP. Please try again later."
-        )
-
     return {"message": "OTP sent to registered mobile number"}
-
-
 
 @router.post("/reset-password")
 def reset_password(data: ResetPasswordWithOTP):
